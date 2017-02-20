@@ -53,6 +53,8 @@ class PostGIS:
         cmd = 'ogr2ogr -f "PostgreSQL" "PG:%s" \
             -progress \
             -overwrite \
+            -t_srs EPSG:31901 \
+            -s_srs EPSG:31901 \
             -lco fid=id \
             -lco launder=no \
             -lco geometry_name=geom \

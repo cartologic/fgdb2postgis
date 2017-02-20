@@ -13,10 +13,10 @@ This package should be installed only on windows systems because of ArcGIS (Arcp
 
 Install required packages::
 
-    pip install numpy
-    pip install psycopg2
-    pip install pyyaml
-    pip install git+https://github.com/gmioannou/archook.git
+    pip install numpy>=1.12.0
+    pip install psycopg2>=2.6.2
+    pip install pyyaml>=3.12
+    pip install archook==1.1.0
 
 Install fgdb2postgis::
 
@@ -101,3 +101,8 @@ Restrictions
 * DO NOT apply this tool in a production postgis database!
 * The target postgis database should exists and be EMPTY.
 * The tool will OVERWRITE any tables having the same name with the tables in the file geodatabase.
+
+Note
+----
+
+Special thanks goes to `James Ramm <ramshacklerecording@gmail.com>`_ who kindly developed and shared the archook package.

@@ -2,7 +2,7 @@
  # filegdb.py
  #
  # Description: Read file geodatabase, create tables for subtypes and domains
- #              Prepare sql scripts for indexes and forreign key constraints
+ #              Prepare sql scripts for indexes and foreign key constraints
  # Author: George Ioannou
  # Copyright: Cartologic 2017
  #
