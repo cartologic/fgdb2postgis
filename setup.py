@@ -6,7 +6,7 @@ requirements = parse_requirements('./requirements.txt', session=False)
 
 setup(
     name='fgdb2postgis',
-    version='0.1.4',
+    version='0.1.5',
     description="""File geodatabase to postgis convertor""",
     long_description=open('README.rst').read(),
     author='George Ioannou',
