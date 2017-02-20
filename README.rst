@@ -1,5 +1,5 @@
 ====================================================
-File Geodatabase to PostGIS convertor (fgdb2postgis)
+File Geodatabase to PostGIS converter (fgdb2postgis)
 ====================================================
 Python package providing functionality for converting esri file geodatabase to postgresql/postgis.
 The tool is solving the problem related to geodatabase's subtypes, domains and relationships classes by creating Indexes and foreign key constraints among the feature classes' tables, data tables and lookup tables in the target postgresql database. There is no provision though for GDAL/OGR options in this initial release but probably it will be in the next releases.
@@ -75,13 +75,13 @@ Schemas:
   The schemas to be created in the target postgis database.
 
 FeatureDatasets:
-  Maps the feature datasets of the geodatabase to the schemas of the target postgis database
+  Mapping of the geodatabase's feature datasets to the schemas of the target postgis database
 
 FeatureClasses:
-  Maps the feature classes of the geodatabase that do not belong to any feature dataset to the schemas of the target postgis database
+  Mapping of the geodatabase's feature classes that do not belong to any feature dataset to the schemas of the target postgis database
 
 Tables:
-  Maps the tables of the geodatabase to the schemas of target postgis database
+  Mapping of the geodatabase's tables to the schemas of target postgis database
 
 |
 
@@ -102,7 +102,11 @@ Restrictions
 * The target postgis database should exists and be EMPTY.
 * The tool will OVERWRITE any tables having the same name with the tables in the file geodatabase.
 
-Note
-----
+Credits
+-------
 
-Special thanks goes to `James Ramm <ramshacklerecording@gmail.com>`_ who kindly developed and shared the archook package.
+Credit goes to `James Ramm <ramshacklerecording@gmail.com>`_ who kindly developed and shared the archook package.
+
+License
+-------
+GNU Public License (GPL) Version 3
