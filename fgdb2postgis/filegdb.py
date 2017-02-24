@@ -7,8 +7,9 @@
  # Copyright: Cartologic 2017
  #
  ##
-from os import path, mkdir, getcwd
+import os
 import yaml
+from os import path
 
 try:
     import archook #The module which locates arcgis
@@ -33,7 +34,7 @@ class FileGDB:
 
     def init_paths(self):
         # workspace path
-        workspace_path = path.join(getcwd(), self.workspace)
+        workspace_path = path.join(os.getcwd(), self.workspace)
         workspace_dir = path.dirname(workspace_path)
         workspace_base = path.basename(workspace_path)
 
@@ -61,7 +62,7 @@ class FileGDB:
 
     def parse_yaml(self):
         if not path.exists(self.yamlfile_path):
-            print "\nYaml file does not exist. \nData will be loaded into public schema!"
+            print "\nYaml file not found. \nData will be loaded into the public schema!"
             return
 
         yf = open(self.yamlfile_path)
@@ -83,7 +84,7 @@ class FileGDB:
         print "\nInitializing sql files ..."
 
         if not path.exists(self.sqlfolder_path):
-            path.mkdir(self.sqlfolder_path)
+            os.mkdir(self.sqlfolder_path)
 
         self.f_create_schemas = open(path.join(self.sqlfolder_path, "create_schemas.sql"), "w")
         self.f_split_schemas = open(path.join(self.sqlfolder_path, "split_schemas.sql"), "w")

@@ -7,7 +7,8 @@
  # Copyright: Cartologic 2017
  #
  ##
-import sys, psycopg2
+import sys
+import psycopg2
 from os import path, system
 
 class PostGIS:
