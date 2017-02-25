@@ -1,10 +1,11 @@
 ====================================================
 File Geodatabase to PostGIS converter (fgdb2postgis)
 ====================================================
-Python package providing functionality for converting esri file geodatabase to postgresql/postgis.
-The tool is solving the problem related to geodatabase's subtypes, domains and relationships classes by creating Indexes and foreign key constraints among the feature classes' tables, data tables and lookup tables in the target postgresql database. There is no provision though for GDAL/OGR options in this initial release but probably it will be in the next releases.
+The aim of this tool is to convert an ESRI file Geodatabase to a PostGIS database maintaining data, domains, subtypes and relationships.
+To recreate the same experience of the domains and subtypes in QGIS using the output data, please install the plugin `Data Manager <https://github.com/cartologic/qgis-datamanager-plugin>`_.
+Now you can have domain experience in QGIS that is stored in the database and not in the QGIS project.
 
-Note:
+.. note::
    This library requires GDAL/OGR libraries and ESRI ArcGIS to be installed in the system.
 
 Installation
@@ -22,9 +23,12 @@ Install fgdb2postgis::
 
     pip install fgdb2postgis
 
-Note:
-  It does not automatically install GDAL/OGR libraries or ESRI ArcGIS in your system.
-  You can install GDAL/OGR from `OSGeo4W <https://trac.osgeo.org/osgeo4w/>`_ or use the installation of QGIS
+.. note::
+
+ * This tool requires to have GDAL/OGR libraries and ArcGIS 10.3 or later installed.
+ * ESRI Python packages usually under C:\Python27\ArcGIS10.* might not have pip included make sure to
+    * install pip if not already installed
+    * setup ESRI python and GDAL/OGR in the windows path
 
 Usage
 -----
@@ -35,8 +39,10 @@ Example::
     filegdb: sample.gdb
        yaml: sample.gdb.yaml
 
-Note:
+.. note::
   The Yaml file should be located in the same folder with the file geodatabase.
+  If run without the yaml file will convert the full database and load it into the public schema.
+  The schema lookup_tables will always be created regardless of the yaml file.
 
 |
 
@@ -95,12 +101,14 @@ Command line options::
                  --user=user
                  --password=password
 
-Restrictions
-------------
+.. tip::
+  * This tool is tested with PostGRES v 9.5 and PostGIS v 2.2
+  * Currently the tool support only Latin Name fields and suptypes, domain values can be in any   language, make sure to set the corresponding windows domain
 
-* DO NOT apply this tool in a production postgis database!
-* The target postgis database should exists and be EMPTY.
-* The tool will OVERWRITE any tables having the same name with the tables in the file geodatabase.
+.. warning::
+  * DO NOT apply this tool in a production postgis database!
+  * The target postgis database should exists and be EMPTY.
+  * The tool will OVERWRITE any tables having the same name with the tables in the file geodatabase.
 
 Credits
 -------

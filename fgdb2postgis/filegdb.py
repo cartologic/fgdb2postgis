@@ -11,8 +11,9 @@ import os
 import yaml
 from os import path
 
+# locate and import arcpy
 try:
-    import archook #The module which locates arcgis
+    import archook
     archook.get_arcpy()
     import arcpy
 except ImportError:
@@ -32,6 +33,9 @@ class FileGDB:
         self.init_paths()
         self.parse_yaml()
 
+    #-------------------------------------------------------------------------------
+    # Initialize file geodatabase environment
+    #
     def init_paths(self):
         # workspace path
         workspace_path = path.join(os.getcwd(), self.workspace)
@@ -60,26 +64,36 @@ class FileGDB:
         arcpy.env.workspace = self.workspace
         arcpy.env.overwriteOutput = True
 
+    #-------------------------------------------------------------------------------
+    # Parse the yaml file and map data to schemas
+    #
     def parse_yaml(self):
-        if not path.exists(self.yamlfile_path):
-            print "\nYaml file not found. \nData will be loaded into the public schema!"
-            return
+        # parse yaml file and map datasets, feature classes, tables to schemas
+        if path.exists(self.yamlfile_path):
+            yf = open(self.yamlfile_path)
+            data_map = yaml.load(yf)
 
-        yf = open(self.yamlfile_path)
-        data_map = yaml.load(yf)
+            for key_type, value_items in data_map.items():
+                if (key_type == "Schemas"):
+                    self.schemas = value_items
+                elif (key_type == "FeatureDatasets"):
+                    self.feature_datasets = value_items
+                elif (key_type == "FeatureClasses"):
+                    self.feature_classes = value_items
+                elif (key_type == "Tables"):
+                    self.tables = value_items
+            yf.close()
+        else:
+            print "\nYaml file not found."
+            print "Data will be loaded into the public schema!"
 
-        for key_type, value_items in data_map.items():
-            if (key_type == "Schemas"):
-                self.schemas = value_items
-            elif (key_type == "FeatureDatasets"):
-                self.feature_datasets = value_items
-            elif (key_type == "FeatureClasses"):
-                self.feature_classes = value_items
-            elif (key_type == "Tables"):
-                self.tables = value_items
+        # lookup_tables is a default schema and it will host subtypes, domains
+        if 'lookup_tables' not in self.schemas:
+            self.schemas.append('lookup_tables')
 
-        yf.close()
-
+    #-------------------------------------------------------------------------------
+    # Open sql files
+    #
     def open_files(self):
         print "\nInitializing sql files ..."
 
@@ -95,6 +109,9 @@ class FileGDB:
 
         self.write_headers()
 
+    #-------------------------------------------------------------------------------
+    # close sql files
+    #
     def close_files(self):
         print "\nClosing sql files ..."
         self.f_create_schemas.close()
@@ -104,6 +121,10 @@ class FileGDB:
         self.f_find_data_errors.close()
         self.f_fix_data_errors.close()
 
+    #-------------------------------------------------------------------------------
+    # Process domains
+    # Convert domains to tables
+    #
     def process_domains(self):
         print "\nProcessing domains ..."
 
@@ -135,11 +156,11 @@ class FileGDB:
                 self.create_constraints_referencing_domains(fc)
 
     #-------------------------------------------------------------------------------
-    # Create domain table and insert records
+    # Create domain table and insert records (list of values)
     #
     def create_domain_table(self, domain):
         domain_name = domain.name.replace(" ", "")
-        domain_table = "%s_Lut" % domain_name
+        domain_table = "%s_lut" % domain_name
 
         domain_field = "Code"
         domain_field_desc = "Description"
@@ -179,7 +200,7 @@ class FileGDB:
 
         # create index
         self.create_index(domain_table, domain_field)
-        self.split_schemas(domain_table, "LookupTables")
+        self.split_schemas(domain_table, "lookup_tables")
 
     #-------------------------------------------------------------------------------
     # Create foraign key constraints to tables referencing domain tables
@@ -202,7 +223,7 @@ class FileGDB:
                     if v2 != '':
                         # stfield = v2.upper()
                         stfield = v2
-                        sttable = "%s_%s_Lut" % (layer, stfield)
+                        sttable = "%s_%s_lut" % (layer, stfield)
                     else:
                         stfield = '--'
                         sttable = '--'
@@ -210,7 +231,7 @@ class FileGDB:
                 elif k2 == 'FieldValues':
                     for dmfield, v3 in v2.iteritems():
                         if v3[1] is not None:
-                            dmtable = v3[1].name + '_Lut'
+                            dmtable = v3[1].name + '_lut'
                             self.create_foreign_key_constraint(layer, dmfield, dmtable, dmcode)
 
 
@@ -244,7 +265,7 @@ class FileGDB:
                 self.create_subtypes_table(fc)
 
     #-------------------------------------------------------------------------------
-    # Create subtypes table for layer - fielld and insert records
+    # Create subtypes table for layer - field and insert records (list of values)
     #
     def create_subtypes_table(self, layer):
         subtypes = arcpy.da.ListSubtypes(layer)
@@ -259,12 +280,17 @@ class FileGDB:
             # convert to upper case to avoid esri filed alias
             field = field.upper()
 
-            subtypes_table = "%s_%s_Lut" % (layer, field)
+            # find subtype field type
+            for f in arcpy.ListFields(layer):
+                if f.name.upper() == field:
+                    field_type = f.type
+
+            subtypes_table = "%s_%s_lut" % (layer, field)
             print(" %s" % subtypes_table)
 
             # create subtype table
             arcpy.CreateTable_management(self.workspace, subtypes_table)
-            arcpy.AddField_management(subtypes_table, field, "Short")
+            arcpy.AddField_management(subtypes_table, field, field_type)
             arcpy.AddField_management(subtypes_table, "Description", "String")
 
             # insert rows
@@ -279,7 +305,7 @@ class FileGDB:
 
             self.create_index(subtypes_table, field)
             self.create_foreign_key_constraint(layer, field, subtypes_table, field)
-            self.split_schemas(subtypes_table, "LookupTables")
+            self.split_schemas(subtypes_table, "lookup_tables")
 
 
     #-------------------------------------------------------------------------------
@@ -328,7 +354,7 @@ class FileGDB:
             self.write_it(self.f_fix_data_errors, str_fix_errors_2)
 
     #-------------------------------------------------------------------------------
-    # Prepare set with all the relationship classes and return it to the calling routine
+    # Prepare relationship classes set and return it to the calling routine
     #
     def get_relationship_classes(self):
         # initiate feature classes list
@@ -358,6 +384,7 @@ class FileGDB:
                 relClasses.add(rel)
 
         return relClasses
+
 
     #-------------------------------------------------------------------------------
     # Process Schemas
