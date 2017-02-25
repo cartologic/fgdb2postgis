@@ -2,6 +2,8 @@
 File Geodatabase to PostGIS converter (fgdb2postgis)
 ====================================================
 The aim of this tool is to convert an ESRI file Geodatabase to a PostGIS database maintaining data, domains, subtypes and relationships.
+The tool will copy over the feature classes as postgis layers and the tables as standard tables. The domains and subtypes will be converted to PostgreSQL lookup tables.
+The tool will then create all necessary indexes and constraints to maintain the required relates between the layers, tables and lookup tables.
 To recreate the same experience of the domains and subtypes in QGIS using the output data, please install the plugin `Data Manager <https://github.com/cartologic/qgis-datamanager-plugin>`_.
 Now you can have domain experience in QGIS that is stored in the database and not in the QGIS project.
 
