@@ -4,8 +4,8 @@ from setuptools import setup
 
 setup(
     name='fgdb2postgis',
-    version='0.1.8',
-    description="""File geodatabase to postgis convertor""",
+    version='0.2.5',
+    description="""ESRI file geodatabase to PostGIS converter""",
     long_description=open('README.rst').read(),
     author='George Ioannou',
     author_email='gmioannou@cartologic.com',

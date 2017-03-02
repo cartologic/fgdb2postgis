@@ -27,10 +27,11 @@ Install fgdb2postgis::
 
 .. note::
 
- * This tool requires to have GDAL/OGR libraries and ArcGIS 10.3 or later installed.
- * ESRI Python packages usually under C:\Python27\ArcGIS10.* might not have pip included make sure to
-    * install pip if not already installed
-    * setup ESRI python and GDAL/OGR in the windows path
+  * This tool requires to have GDAL/OGR libraries and ArcGIS 10.3 or later installed.
+  * ESRI Python packages usually under C:\Python27\ArcGIS10.* might not have pip included make sure to
+
+    * Install pip if not already installed
+    * Setup ESRI python and GDAL/OGR in windows path environment variable
 
 Usage
 -----
@@ -45,8 +46,6 @@ Example::
   The Yaml file should be located in the same folder with the file geodatabase.
   If run without the yaml file will convert the full database and load it into the public schema.
   The schema lookup_tables will always be created regardless of the yaml file.
-
-|
 
 Yaml file example::
 
@@ -78,7 +77,6 @@ Yaml file example::
         - EarthquakeTS
         - SeismicTST
 
-
 Schemas:
   The schemas to be created in the target postgis database.
 
@@ -91,8 +89,6 @@ FeatureClasses:
 Tables:
   Mapping of the geodatabase's tables to the schemas of target postgis database
 
-|
-
 Command line options::
 
     fgdb2postgis -h
@@ -104,7 +100,7 @@ Command line options::
                  --password=password
 
 .. tip::
-  * This tool is tested with PostGRES v 9.5 and PostGIS v 2.2
+  * This tool is tested with PostgreSQL v 9.5 and PostGIS v 2.2
   * Currently the tool support only Latin Name fields and suptypes, domain values can be in any   language, make sure to set the corresponding windows domain
 
 .. warning::
