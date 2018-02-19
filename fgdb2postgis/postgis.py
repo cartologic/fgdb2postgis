@@ -12,8 +12,9 @@ import psycopg2
 from os import path, system
 
 class PostGIS:
-	def __init__(self, host, port, user, password, dbname):
+	def __init__(self, host, port, user, password, dbname, t_srs):
 		self.dbname = dbname
+		self.t_srs = t_srs
 		self.host = host
 		self.port = port
 		self.user = user
@@ -25,7 +26,8 @@ class PostGIS:
 
 	def info(self):
 		print '\nPostGIS Info:'
-		print ' Name: %s' % self.dbname
+		print ' Database Name: %s' % self.dbname
+		print ' Coord System: %s' % self.t_srs
 		print ' Host: %s' % self.host
 		print ' Port: %s' % self.port
 		print ' User: %s' % self.user
@@ -53,12 +55,15 @@ class PostGIS:
 
 		cmd = 'ogr2ogr -f "PostgreSQL" "PG:%s" \
 			-progress \
-			-overwrite \
+			-append \
+			-a_srs %s \
+			-t_srs %s \
 			-lco fid=id \
 			-lco launder=no \
 			-lco geometry_name=geom \
 			--config OGR_TRUNCATE YES \
-			--config PG_USE_COPY YES %s' % (self.conn_string, filegdb.workspace)
+			--config PG_USE_COPY YES \
+			%s' % (self.conn_string, filegdb.a_srs, self.t_srs, filegdb.workspace)
 
 		system(cmd)
 

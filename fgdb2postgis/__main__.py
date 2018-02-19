@@ -11,14 +11,30 @@ from filegdb import FileGDB
 from postgis import PostGIS
 
 def show_usage():
-	print "Usage: fgdb2postgis.py -f filegdb -p postgis --host=host --port=port --user=user --password=password"
+	print "Usage:"
+	print "  fgdb2postgis.py -v"
+	print "  fgdb2postgis.py -h"
+	print "  fgdb2postgis.py -f filegdb"
+	print "                  -p postgis"
+	print "                  --a_srs=a_srs"
+	print "                  --t_srs=t_srs"
+	print "                  --host=host"
+	print "                  --port=port"
+	print "                  --user=user"
+	print "                  --password=password"
+
 	sys.exit(1)
 
-if len(sys.argv) != 9:
+def show_version():
+	print "Version: 0.2.5"
+	sys.exit(1)
+
+if len(sys.argv) not in [2,11]:
 	show_usage()
 else:
 	try:
-		options, remainder = getopt.getopt(sys.argv[1:], 'hf:p:', ['fgdb=', 'pgdb=', 'host=', 'port=', 'user=', 'password='])
+		# fgdb2postgis -f data\Kiein10.gdb -p kiein_web --host=localhost --port=5432 --user=kieindba --password=kieindba
+		options, remainder = getopt.getopt(sys.argv[1:], 'hvf:p:', ['fgdb=', 'pgdb=', 'a_srs=', 't_srs=', 'host=', 'port=', 'user=', 'password='])
 	except getopt.GetoptError as err:
 		print str(err)
 		show_usage()
@@ -26,10 +42,16 @@ else:
 for opt, arg in options:
 	if opt == '-h':
 		show_usage()
+	elif opt == '-v':
+		show_version()
 	elif opt in ('-f'):
 		fgdb = arg
 	elif opt in ('-p'):
 		pgdb = arg
+	elif opt in ('--a_srs'):
+		a_srs = arg
+	elif opt in ('--t_srs'):
+		t_srs = arg
 	elif opt in ('--host'):
 		host = arg
 	elif opt in ('--port'):
@@ -44,7 +66,7 @@ for opt, arg in options:
 #
 def main():
 
-	filegdb = FileGDB(fgdb)
+	filegdb = FileGDB(fgdb, a_srs)
 	filegdb.info()
 	filegdb.setenv()
 	filegdb.open_files()
@@ -54,7 +76,7 @@ def main():
 	filegdb.process_schemas()
 	filegdb.close_files()
 
-	postgis = PostGIS(host, port, user, password, pgdb)
+	postgis = PostGIS(host, port, user, password, pgdb, t_srs)
 	postgis.info()
 	postgis.connect()
 	postgis.update_views()

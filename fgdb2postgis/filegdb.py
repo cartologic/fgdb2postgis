@@ -17,12 +17,13 @@ try:
 	archook.get_arcpy()
 	import arcpy
 except ImportError:
-	print "Unable to locate arcpy ..."
+	print "Unable to locate arcpy module..."
 	exit(1)
 
 class FileGDB:
-	def __init__(self, workspace):
+	def __init__(self, workspace, a_srs):
 		self.workspace = workspace
+		self.a_srs = a_srs
 		self.workspace_path = ""
 		self.sqlfolder_path = ""
 		self.yamlfile_path = ""
@@ -58,6 +59,7 @@ class FileGDB:
 	def info(self):
 		print "\nFileGDB Info:"
 		print " Workspace: %s" % self.workspace_path
+		print " Coord System: %s" % self.a_srs
 		print " Sqlfolder: %s" % self.sqlfolder_path
 		print " Yamlfile: %s" % self.yamlfile_path
 
@@ -346,8 +348,8 @@ class FileGDB:
 			rel_origin_table = rel.originClassNames[0]
 			rel_destination_table = rel.destinationClassNames[0]
 
-			rel_primary_key = rel.originClassKeys[0][0].upper()
-			rel_foreign_key = rel.originClassKeys[1][0].upper()
+			rel_primary_key = rel.originClassKeys[0][0]
+			rel_foreign_key = rel.originClassKeys[1][0]
 
 			print " %s" % rel.name
 			# print " %s -> %s" % (rel_origin_table, rel_destination_table)
