@@ -8,7 +8,9 @@
  #
  ##
 import os
-import yaml
+# import yaml
+from ruamel.yaml import YAML
+
 from os import path
 
 # locate and import arcpy
@@ -19,6 +21,8 @@ try:
 except ImportError:
 	print "Unable to locate arcpy module..."
 	exit(1)
+
+yaml = YAML()
 
 class FileGDB:
 	def __init__(self, workspace, a_srs):
@@ -31,10 +35,11 @@ class FileGDB:
 		self.feature_datasets = {}
 		self.feature_classes = {}
 		self.tables = {}
-		self.init_paths()
-		self.parse_yaml()
 		self.indexes = []
 		self.constraints = []
+		self.init_paths()
+		self.setenv()
+		self.parse_yaml()
 
 	#-------------------------------------------------------------------------------
 	# Initialize file geodatabase environment
@@ -47,7 +52,7 @@ class FileGDB:
 
 		# sqlfolder, yamlfile path
 		sqlfolder_base = "%s.sql" % workspace_base
-		yamlfile_base = "%s.yaml" % workspace_base
+		yamlfile_base = "%s.yml" % workspace_base
 		sqlfolder_path = path.join(workspace_dir, sqlfolder_base)
 		yamlfile_path = path.join(workspace_dir, yamlfile_base)
 
@@ -58,8 +63,7 @@ class FileGDB:
 
 	def info(self):
 		print "\nFileGDB Info:"
-		print " Workspace: %s" % self.workspace_path
-		print " Coord System: %s" % self.a_srs
+		print " Workspace: %s (%s)" % (self.workspace_path, self.a_srs)
 		print " Sqlfolder: %s" % self.sqlfolder_path
 		print " Yamlfile: %s" % self.yamlfile_path
 
@@ -73,10 +77,12 @@ class FileGDB:
 	#
 	def parse_yaml(self):
 		# parse yaml file and map datasets, feature classes, tables to schemas
-		if path.exists(self.yamlfile_path):
-			yf = open(self.yamlfile_path)
-			data_map = yaml.load(yf)
+		if not path.exists(self.yamlfile_path):
+			print "\nCreating default YAML file ..."
+			self.create_yaml()
 
+		with open(self.yamlfile_path, 'r') as ymlfile:
+			data_map = yaml.load(ymlfile)
 			for key_type, value_items in data_map.items():
 				if (key_type == "Schemas"):
 					self.schemas = value_items
@@ -86,10 +92,6 @@ class FileGDB:
 					self.feature_classes = value_items
 				elif (key_type == "Tables"):
 					self.tables = value_items
-			yf.close()
-		else:
-			print "\nYaml file not found."
-			print "Data will be loaded into the public schema!"
 
 		# lookup_tables is a default schema and it will host subtypes, domains
 		if 'lookup_tables' not in self.schemas:
@@ -136,19 +138,20 @@ class FileGDB:
 		self.write_it(self.f_create_constraints, "\n-- Domains")
 		self.write_it(self.f_split_schemas, "\n-- Domains")
 
-		# create table for each domain
+		## create table for each domain
 		domains_list = arcpy.da.ListDomains(self.workspace)
 		for domain in domains_list:
 			self.create_domain_table(domain)
 
-		# create fk constraints for data tables referencing domain tables
+		## create fk constraints for data tables referencing domain tables
 		tables_list = arcpy.ListTables()
 		tables_list.sort()
 
 		for table in tables_list:
 			self.create_constraints_referencing_domains(table)
 
-		# create fk constraints for feature classes referencing domain tables
+		## create fk constraints for feature classes referencing domain tables
+
 		# stand-alone feature classes
 		fc_list = arcpy.ListFeatureClasses("*", "")
 		fc_list.sort()
@@ -180,35 +183,36 @@ class FileGDB:
 
 		print " %s" % domain_table
 
-		arcpy.CreateTable_management(self.workspace, domain_table)
-		arcpy.AddField_management(domain_table, domain_field, domain_field_type)
-		arcpy.AddField_management(domain_table, domain_field_desc, "String")
+		if not arcpy.Exists(domain_table):
+			arcpy.CreateTable_management(self.workspace, domain_table)
+			arcpy.AddField_management(domain_table, domain_field, domain_field_type)
+			arcpy.AddField_management(domain_table, domain_field_desc, "String")
 
-		if (domain.domainType == "CodedValue"):
-			# sort coded values
-			arcpy.SortCodedValueDomain_management(self.workspace, domain.name, domain_field, "Ascending")
+			if (domain.domainType == "CodedValue"):
+				# sort coded values
+				arcpy.SortCodedValueDomain_management(self.workspace, domain.name, domain_field, "Ascending")
 
-			# insert rows in domain table
-			cur = arcpy.da.InsertCursor(domain_table, "*")
-			oid = 1
-			for code, desc in domain.codedValues.items():
-				# print " %s %s" % (code, desc)
-				cur.insertRow([oid, code, desc])
-				oid += 1
-			del cur
-		elif (domain.domainType == "Range"):
-			# insert rows in domain table
-			cur = arcpy.da.InsertCursor(domain_table, "*")
-			cur.insertRow([0, domain.range[0], "Min value"])
-			cur.insertRow([1, domain.range[1], "Max value"])
-			del cur
+				# insert rows in domain table
+				cur = arcpy.da.InsertCursor(domain_table, "*")
+				oid = 1
+				for code, desc in domain.codedValues.items():
+					# print " %s %s" % (code, desc)
+					cur.insertRow([oid, code, desc])
+					oid += 1
+				del cur
+			elif (domain.domainType == "Range"):
+				# insert rows in domain table
+				cur = arcpy.da.InsertCursor(domain_table, "*")
+				cur.insertRow([0, domain.range[0], "Min value"])
+				cur.insertRow([1, domain.range[1], "Max value"])
+				del cur
 
-			# print range min and max values
-			print " %d %s" % (domain.range[0], "Min value")
-			print " %d %s" % (domain.range[1], "Max value")
-		else:
-			print " Unknown domain type"
-			return
+				# print range min and max values
+				print " %d %s" % (domain.range[0], "Min value")
+				print " %d %s" % (domain.range[1], "Max value")
+			else:
+				print " Unknown domain type"
+				return
 
 		# create index
 		self.create_index(domain_table, domain_field)
@@ -233,7 +237,6 @@ class FileGDB:
 
 				elif k2 == 'SubtypeField':
 					if v2 != '':
-						# stfield = v2.upper()
 						stfield = v2
 						sttable = "%s_%s_lut" % (layer, stfield)
 					else:
@@ -297,31 +300,37 @@ class FileGDB:
 
 		if key != 0:
 
-			# convert to upper case to avoid esri filed alias
-			field = field.upper()
+			# # convert to upper case to avoid esri field alias
+			# field = field.upper()
+
+			# # find subtype field type
+			# for f in arcpy.ListFields(layer):
+			# 	if f.name.upper() == field:
+			# 		field_type = f.type
 
 			# find subtype field type
 			for f in arcpy.ListFields(layer):
-				if f.name.upper() == field:
+				if f.name == field:
 					field_type = f.type
 
 			subtypes_table = "%s_%s_lut" % (layer, field)
 			print(" %s" % subtypes_table)
 
-			# create subtype table
-			arcpy.CreateTable_management(self.workspace, subtypes_table)
-			arcpy.AddField_management(subtypes_table, field, field_type)
-			arcpy.AddField_management(subtypes_table, "Description", "String")
+			if not arcpy.Exists(subtypes_table):
+				# create subtypes table
+				arcpy.CreateTable_management(self.workspace, subtypes_table)
+				arcpy.AddField_management(subtypes_table, field, field_type)
+				arcpy.AddField_management(subtypes_table, "Description", "String")
 
-			# insert rows
-			cur = arcpy.da.InsertCursor(subtypes_table, "*")
-			oid = 1
-			for code, desc in subtype_values.iteritems():
-				# print "  %s %s" % (code, desc)
-				cur.insertRow([oid, code, desc])
-				oid += 1
+				# insert rows
+				cur = arcpy.da.InsertCursor(subtypes_table, "*")
+				oid = 1
+				for code, desc in subtype_values.iteritems():
+					# print "  %s %s" % (code, desc)
+					cur.insertRow([oid, code, desc])
+					oid += 1
 
-			del cur
+				del cur
 
 			self.create_index(subtypes_table, field)
 			self.create_foreign_key_constraint(layer, field, subtypes_table, field)
@@ -347,6 +356,9 @@ class FileGDB:
 
 			rel_origin_table = rel.originClassNames[0]
 			rel_destination_table = rel.destinationClassNames[0]
+
+			# rel_primary_key = rel.originClassKeys[0][0].upper()
+			# rel_foreign_key = rel.originClassKeys[1][0].upper()
 
 			rel_primary_key = rel.originClassKeys[0][0]
 			rel_foreign_key = rel.originClassKeys[1][0]
@@ -377,34 +389,26 @@ class FileGDB:
 	# Prepare relationship classes set and return it to the calling routine
 	#
 	def get_relationship_classes(self):
-		# initiate feature classes list
-		fcs = []
 
-		# get feature classes and tables at geodatabase's root
-		for item in arcpy.ListFeatureClasses("*"):
-			fcs.append(item)
-		for item in arcpy.ListTables("*"):
-			fcs.append(item)
+		# get featureclasses outside of datasets
+		fc_list = arcpy.ListFeatureClasses("*")
 
-		# get fetature classes and tables within feature datasets
-		fds = arcpy.ListDatasets("*","Feature")
-		for fd in fds:
-			arcpy.env.workspace = self.workspace + '\\' + fd
-			for fc in arcpy.ListFeatureClasses("*"):
-				fcs.append(fd + '/' + fc)
-			for tb in arcpy.ListTables("*"):
-				fcs.append(fd + '/' + tb)
+		# get fetatureclasses within datasets
+		fds_list = arcpy.ListDatasets("*","Feature")
+		for fds in fds_list:
+			fc_list += arcpy.ListFeatureClasses("*", "", fds)
+
+		# get tables
+		fc_list += arcpy.ListTables("*")
 
 		# create relationship classes set
-		arcpy.env.workspace = self.workspace
 		relClasses = set()
-		for i,fc in enumerate(fcs):
+		for i, fc in enumerate(fc_list):
 			desc = arcpy.Describe(fc)
 			for j,rel in enumerate(desc.relationshipClassNames):
 				relClasses.add(rel)
 
 		return relClasses
-
 
 	#-------------------------------------------------------------------------------
 	# Process Schemas
@@ -509,3 +513,62 @@ class FileGDB:
 	#
 	def write_it(self, out_file, string):
 		out_file.write(string + "\n")
+
+	def create_yaml(self):
+		# initialize dictionaries
+		schemasdict = {}
+		fdsdict = {'FeatureDatasets': {}}
+		fcdict = {'FeatureClasses': {}}
+		tablesdict = {'Tables': {}}
+
+		# feature datasets
+		fdslist = self.get_feature_datasets()
+		if fdslist != None:
+			fdslist.sort()
+			for fds in fdslist:
+				fdsdict['FeatureDatasets'].update({fds: [fds]})
+
+		# featureclasses in root
+		fclist = self.get_feature_classes(None)
+		if fclist != None:
+			fclist.sort()
+		fcdict['FeatureClasses'].update({'public': fclist})
+
+		# tables
+		tableslist = self.get_tables()
+		if tableslist != None:
+			tableslist.sort()
+		tablesdict['Tables'].update({'public': tableslist})
+
+		# schemas
+		schemasdict.update({'Schemas': fdslist})
+
+		with open(self.yamlfile_path, 'w') as outfile:
+			yaml.dump(schemasdict, outfile)
+
+		with open(self.yamlfile_path, 'a') as outfile:
+			yaml.dump(fdsdict, outfile)
+
+		with open(self.yamlfile_path, 'a') as outfile:
+			yaml.dump(fcdict, outfile)
+
+		with open(self.yamlfile_path, 'a') as outfile:
+			yaml.dump(tablesdict, outfile)
+
+	def get_feature_datasets(self):
+		fdslist = arcpy.ListDatasets()
+		return fdslist
+
+	def get_feature_classes(self, fds):
+		fclist = arcpy.ListFeatureClasses("*", "", fds)
+		return fclist
+
+	def get_tables(self):
+		tableslist = arcpy.ListTables("*")
+		return tableslist
+
+	def cleanup(self):
+		print("Cleanup temporary lookup tables...")
+		lutslist = arcpy.ListTables("*_lut")
+		for lut in lutslist:
+			arcpy.Delete_management(lut)

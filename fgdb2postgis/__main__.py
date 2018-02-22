@@ -26,14 +26,13 @@ def show_usage():
 	sys.exit(1)
 
 def show_version():
-	print "Version: 0.2.5"
+	print "Version: 0.2.7" 
 	sys.exit(1)
 
 if len(sys.argv) not in [2,11]:
 	show_usage()
 else:
 	try:
-		# fgdb2postgis -f data\Kiein10.gdb -p kiein_web --host=localhost --port=5432 --user=kieindba --password=kieindba
 		options, remainder = getopt.getopt(sys.argv[1:], 'hvf:p:', ['fgdb=', 'pgdb=', 'a_srs=', 't_srs=', 'host=', 'port=', 'user=', 'password='])
 	except getopt.GetoptError as err:
 		print str(err)
@@ -68,7 +67,6 @@ def main():
 
 	filegdb = FileGDB(fgdb, a_srs)
 	filegdb.info()
-	filegdb.setenv()
 	filegdb.open_files()
 	filegdb.process_domains()
 	filegdb.process_subtypes()
