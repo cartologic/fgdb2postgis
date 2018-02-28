@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='fgdb2postgis',
-    version='0.2.8',
+    version=__import__('fgdb2postgis').get_current_version(),
     description="""ESRI file geodatabase to PostGIS converter""",
     long_description=open('README.rst').read(),
     author='George Ioannou',
