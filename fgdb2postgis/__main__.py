@@ -83,4 +83,6 @@ def main():
 	postgis.apply_sql(filegdb)
 	postgis.disconnect()
 
+	filegdb.cleanup()
+
 	print "\nComplete!"

@@ -171,7 +171,7 @@ class FileGDB:
 				self.create_constraints_referencing_domains(fc)
 
 	#-------------------------------------------------------------------------------
-	# Create domain table and insert records (list of values)
+	# Create domain table (list of values)
 	#
 	def create_domain_table(self, domain):
 		domain_name = domain.name.replace(" ", "")
@@ -179,40 +179,11 @@ class FileGDB:
 
 		domain_field = "Code"
 		domain_field_desc = "Description"
-		domain_field_type = domain.type
 
 		print " %s" % domain_table
 
 		if not arcpy.Exists(domain_table):
-			arcpy.CreateTable_management(self.workspace, domain_table)
-			arcpy.AddField_management(domain_table, domain_field, domain_field_type)
-			arcpy.AddField_management(domain_table, domain_field_desc, "String")
-
-			if (domain.domainType == "CodedValue"):
-				# sort coded values
-				arcpy.SortCodedValueDomain_management(self.workspace, domain.name, domain_field, "Ascending")
-
-				# insert rows in domain table
-				cur = arcpy.da.InsertCursor(domain_table, "*")
-				oid = 1
-				for code, desc in domain.codedValues.items():
-					# print " %s %s" % (code, desc)
-					cur.insertRow([oid, code, desc])
-					oid += 1
-				del cur
-			elif (domain.domainType == "Range"):
-				# insert rows in domain table
-				cur = arcpy.da.InsertCursor(domain_table, "*")
-				cur.insertRow([0, domain.range[0], "Min value"])
-				cur.insertRow([1, domain.range[1], "Max value"])
-				del cur
-
-				# print range min and max values
-				print " %d %s" % (domain.range[0], "Min value")
-				print " %d %s" % (domain.range[1], "Max value")
-			else:
-				print " Unknown domain type"
-				return
+			arcpy.DomainToTable_management(self.workspace, domain.name, domain_table, domain_field, domain_field_desc)
 
 		# create index
 		self.create_index(domain_table, domain_field)
@@ -268,15 +239,14 @@ class FileGDB:
 		for table in tables_list:
 			self.create_subtypes_table(table)
 
-		# create subtypes table for feature classes
-		# stand-alone feature classes
+		# create subtypes table for stand-alone featureclasses
 		fc_list = arcpy.ListFeatureClasses("*", "")
 		fc_list.sort()
 
 		for fc in fc_list:
 			self.create_subtypes_table(fc)
 
-		# feature classes in feature datasets
+		# create subtypes table for featureclasses in datasets
 		fds_list = arcpy.ListDatasets("*", "Feature")
 		fds_list.sort()
 
@@ -288,30 +258,30 @@ class FileGDB:
 				self.create_subtypes_table(fc)
 
 	#-------------------------------------------------------------------------------
-	# Create subtypes table for layer - field and insert records (list of values)
+	# Create subtypes table for layer/field and insert records (list of values)
 	#
 	def create_subtypes_table(self, layer):
-		subtypes = arcpy.da.ListSubtypes(layer)
+		subtypes_dict = arcpy.da.ListSubtypes(layer)
 
-		subtype_fields = {key: value['SubtypeField'] for key, value in subtypes.iteritems()}
-		subtype_values = {key: value['Name'] for key, value in subtypes.iteritems()}
+		subtype_fields = {key: value['SubtypeField'] for key, value in subtypes_dict.iteritems()}
+		subtype_values = {key: value['Name'] for key, value in subtypes_dict.iteritems()}
 
 		key, field = subtype_fields.items()[0]
 
-		if key != 0:
-
-			# # convert to upper case to avoid esri field alias
-			# field = field.upper()
-
-			# # find subtype field type
-			# for f in arcpy.ListFields(layer):
-			# 	if f.name.upper() == field:
-			# 		field_type = f.type
+		if len(field) > 0:
 
 			# find subtype field type
+			field_type = None
 			for f in arcpy.ListFields(layer):
 				if f.name == field:
 					field_type = f.type
+
+			# convert field to upper case and try again if not found
+			if field_type == None:	
+				field = field.upper()
+				for f in arcpy.ListFields(layer):
+					if f.name.upper() == field:
+						field_type = f.type
 
 			subtypes_table = "%s_%s_lut" % (layer, field)
 			print(" %s" % subtypes_table)
@@ -322,7 +292,7 @@ class FileGDB:
 				arcpy.AddField_management(subtypes_table, field, field_type)
 				arcpy.AddField_management(subtypes_table, "Description", "String")
 
-				# insert rows
+				# insert records (list of values)
 				cur = arcpy.da.InsertCursor(subtypes_table, "*")
 				oid = 1
 				for code, desc in subtype_values.iteritems():
@@ -357,11 +327,15 @@ class FileGDB:
 			rel_origin_table = rel.originClassNames[0]
 			rel_destination_table = rel.destinationClassNames[0]
 
-			# rel_primary_key = rel.originClassKeys[0][0].upper()
-			# rel_foreign_key = rel.originClassKeys[1][0].upper()
-
 			rel_primary_key = rel.originClassKeys[0][0]
 			rel_foreign_key = rel.originClassKeys[1][0]
+			
+			# convert primary/foreign key to uppercase if not found
+			if rel_primary_key not in [field.name for field in arcpy.ListFields(rel_origin_table)]:
+				rel_primary_key = rel.originClassKeys[0][0].upper()
+
+			if rel_foreign_key not in [field.name for field in arcpy.ListFields(rel_destination_table)]:
+				rel_foreign_key = rel.originClassKeys[1][0].upper()
 
 			print " %s" % rel.name
 			# print " %s -> %s" % (rel_origin_table, rel_destination_table)
@@ -386,7 +360,7 @@ class FileGDB:
 			self.write_it(self.f_fix_data_errors, str_fix_errors_2)
 
 	#-------------------------------------------------------------------------------
-	# Prepare relationship classes set and return it to the calling routine
+	# Create relationship classes Set and return it to the calling routine
 	#
 	def get_relationship_classes(self):
 

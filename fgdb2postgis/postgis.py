@@ -26,8 +26,7 @@ class PostGIS:
 
 	def info(self):
 		print '\nPostGIS Info:'
-		print ' Database Name: %s' % self.dbname
-		print ' Coord System: %s' % self.t_srs
+		print ' Database: %s (%s)' % (self.dbname, self.t_srs)
 		print ' Host: %s' % self.host
 		print ' Port: %s' % self.port
 		print ' User: %s' % self.user
