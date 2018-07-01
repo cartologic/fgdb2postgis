@@ -7,8 +7,9 @@
  #
  ##
 import getopt, sys
-from filegdb import FileGDB
-from postgis import PostGIS
+from .filegdb import FileGDB
+from .postgis import PostGIS
+from .version import get_version
 
 def show_usage():
 	print "Usage:"
@@ -26,7 +27,7 @@ def show_usage():
 	sys.exit(1)
 
 def show_version():
-	print "Version: 0.2.7" 
+	print "Version: %s"%(get_version()) 
 	sys.exit(1)
 
 if len(sys.argv) not in [2,11]:
