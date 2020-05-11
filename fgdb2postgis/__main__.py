@@ -11,6 +11,9 @@ from .filegdb import FileGDB
 from .postgis import PostGIS
 from .version import get_version
 
+reload(sys)
+sys.setdefaultencoding('utf8')
+
 def show_usage():
 	print "Usage:"
 	print "  fgdb2postgis.py -v"
