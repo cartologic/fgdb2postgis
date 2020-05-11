@@ -7,11 +7,9 @@
  # Copyright: Cartologic 2017
  #
  ##
-import os
-# import yaml
+from os import path, getcwd, mkdir
 from ruamel.yaml import YAML
-
-from os import path
+from slugify import slugify
 
 # locate and import arcpy
 try:
@@ -46,7 +44,7 @@ class FileGDB:
 	#
 	def init_paths(self):
 		# workspace path
-		workspace_path = path.join(os.getcwd(), self.workspace)
+		workspace_path = path.join(getcwd(), self.workspace)
 		workspace_dir = path.dirname(workspace_path)
 		workspace_base = path.basename(workspace_path)
 
@@ -104,7 +102,7 @@ class FileGDB:
 		print "\nInitializing sql files ..."
 
 		if not path.exists(self.sqlfolder_path):
-			os.mkdir(self.sqlfolder_path)
+			mkdir(self.sqlfolder_path)
 
 		self.f_create_schemas = open(path.join(self.sqlfolder_path, "create_schemas.sql"), "w")
 		self.f_split_schemas = open(path.join(self.sqlfolder_path, "split_schemas.sql"), "w")
@@ -174,7 +172,7 @@ class FileGDB:
 	# Create domain table (list of values)
 	#
 	def create_domain_table(self, domain):
-		domain_name = domain.name.replace(" ", "")
+		domain_name = slugify(domain.name, separator='_', lowercase=False)
 		domain_table = "%s_lut" % domain_name
 
 		domain_field = "Code"
@@ -217,7 +215,8 @@ class FileGDB:
 				elif k2 == 'FieldValues':
 					for dmfield, v3 in v2.iteritems():
 						if v3[1] is not None:
-							dmtable = v3[1].name + '_lut'
+							dmname = slugify(v3[1].name, separator='_', lowercase=False)
+							dmtable = dmname + '_lut'
 							self.create_foreign_key_constraint(layer, dmfield, dmtable, dmcode)
 
 
@@ -284,6 +283,7 @@ class FileGDB:
 						field_type = f.type
 
 			subtypes_table = "%s_%s_lut" % (layer, field)
+			subtypes_table = slugify(subtypes_table, separator='_', lowercase=False)
 			print(" %s" % subtypes_table)
 
 			if not arcpy.Exists(subtypes_table):
