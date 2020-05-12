@@ -8,21 +8,21 @@ To recreate the same experience of the domains and subtypes in QGIS using the ou
 Now you can have domain experience in QGIS that is stored in the database and not in the QGIS project.
 
 .. note::
-   This library requires GDAL/OGR libraries and ESRI ArcGIS to be installed in the system.
+   This library requires GDAL/OGR libraries and ESRI ArcGIS Pro to be installed.
 
 Installation
 ------------
-This package should be installed on windows systems into ArcGIS Pro conda environment. (because of Arcpy)
+This package should be installed on windows systems into ArcGIS Pro conda python environment. (because of Arcpy)
 
 Install required packages::
-    pip install numpy>=1.12.0
-    pip install psycopg2>=2.6.2
-    pip install ruamel.yaml>=0.15.35
-    pip install awesome-slugify==1.6.5
+  * pip install numpy>=1.12.0
+  * pip install psycopg2>=2.6.2
+  * pip install ruamel.yaml>=0.15.35
+  * pip install awesome-slugify==1.6.5
 
 Install fgdb2postgis::
 
-    pip install fgdb2postgis
+  * pip install fgdb2postgis
 
 .. note::
 
@@ -115,7 +115,7 @@ Command line options::
     * PostGIS v 2.5
     * ArcGIS Pro v 2.5.1
 
-  * The tool support only Latin characters for field names and suptypes while domain values and descriptions can be in any locale.
+  * The tool supports only Latin characters for field names and suptypes while domain values and descriptions might be in any locale.
 
 .. warning::
   * DO NOT apply this tool in a production postgis database!
@@ -125,7 +125,7 @@ Command line options::
 Last Update:
   * Migrate to Python 3.X (ArcGIS Pro)
   * 12 May 2020
-  
+
 License
 -------
 
