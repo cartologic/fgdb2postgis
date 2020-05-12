@@ -4,7 +4,7 @@
 # Description: Read file geodatabase, create tables for subtypes and domains
 #              Prepare sql scripts for indexes and foreign key constraints
 # Author: George Ioannou
-# Copyright: Cartologic 2017
+# Copyright: Cartologic 2017-2020
 #
 ##
 from os import getcwd, mkdir, path
@@ -44,8 +44,8 @@ class FileGDB:
         workspace_base = path.basename(workspace_path)
 
         # sqlfolder, yamlfile path
-        sqlfolder_base = "%s.sql" % workspace_base
-        yamlfile_base = "%s.yml" % workspace_base
+        sqlfolder_base = "{}.sql".format(workspace_base)
+        yamlfile_base = "{}.yml".format(workspace_base)
         sqlfolder_path = path.join(workspace_dir, sqlfolder_base)
         yamlfile_path = path.join(workspace_dir, yamlfile_base)
 
@@ -56,9 +56,9 @@ class FileGDB:
 
     def info(self):
         print("\nFileGDB Info:")
-        print(" Workspace: %s (%s)" % (self.workspace_path, self.a_srs))
-        print(" Sqlfolder: %s" % self.sqlfolder_path)
-        print(" Yamlfile: %s" % self.yamlfile_path)
+        print(" Workspace: {0} ({1})".format(self.workspace_path, self.a_srs))
+        print(" Sqlfolder: {0}".format(self.sqlfolder_path))
+        print(" Yamlfile: {0}".format(self.yamlfile_path))
 
     def setenv(self):
         print("\nSetting arcpy environment ...")
@@ -150,7 +150,6 @@ class FileGDB:
             self.create_constraints_referencing_domains(table)
 
         # create fk constraints for feature classes referencing domain tables
-
         # stand-alone feature classes
         fc_list = arcpy.ListFeatureClasses("*", "")
         fc_list.sort()
@@ -174,12 +173,12 @@ class FileGDB:
     #
     def create_domain_table(self, domain):
         domain_name = slugify(domain.name, separator='_', lowercase=False)
-        domain_table = "%s_lut" % domain_name
+        domain_table = "{}_lut".format(domain_name)
 
         domain_field = "Code"
         domain_field_desc = "Description"
 
-        print(" %s" % domain_table)
+        print(" {}".format(domain_table))
 
         if not arcpy.Exists(domain_table):
             arcpy.DomainToTable_management(
@@ -209,7 +208,7 @@ class FileGDB:
                 elif k2 == 'SubtypeField':
                     if v2 != '':
                         stfield = v2
-                        sttable = "%s_%s_lut" % (layer, stfield)
+                        sttable = "{0}_{1}_lut".format(layer, stfield)
                     else:
                         stfield = '--'
                         sttable = '--'
@@ -288,10 +287,10 @@ class FileGDB:
                     if f.name.upper() == field:
                         field_type = f.type
 
-            subtypes_table = "%s_%s_lut" % (layer, field)
+            subtypes_table = "{0}_{1}_lut".format(layer, field)
             subtypes_table = slugify(
                 subtypes_table, separator='_', lowercase=False)
-            print(" %s" % subtypes_table)
+            print(" {}".format(subtypes_table))
 
             if not arcpy.Exists(subtypes_table):
                 # create subtypes table
@@ -304,7 +303,7 @@ class FileGDB:
                 cur = arcpy.da.InsertCursor(subtypes_table, "*")
                 oid = 1
                 for code, desc in subtype_values.items():
-                    # print("  %s %s" % (code, desc)
+                    # print("  {0} {1}".format(code, desc))
                     cur.insertRow([oid, code, desc])
                     oid += 1
 
@@ -348,28 +347,28 @@ class FileGDB:
             if rel_foreign_key not in [field.name for field in arcpy.ListFields(rel_destination_table)]:
                 rel_foreign_key = rel.originClassKeys[1][0].upper()
 
-            print(" %s" % rel.name)
-            # print(" %s -> %s" % (rel_origin_table, rel_destination_table)
+            print(" {}".format(rel.name))
+            # print(" {0} -> {1}".format(rel_origin_table, rel_destination_table))
 
             self.create_index(rel_origin_table, rel_primary_key)
             self.create_foreign_key_constraint(
                 rel_destination_table, rel_foreign_key, rel_origin_table, rel_primary_key)
 
             # prcess data errors (fk)
-            str_data_errors_fk = '\\echo %s (%s) -> %s (%s);' % (
+            str_data_errors_fk = '\\echo {0} ({1}) -> {2} ({3});'.format(
                 rel_destination_table, rel_foreign_key, rel_origin_table, rel_primary_key)
             self.write_it(self.f_find_data_errors, str_data_errors_fk)
 
-            str_data_errors = 'SELECT COUNT(*) FROM "%s" dest WHERE NOT EXISTS (SELECT 1 FROM "%s" orig WHERE dest."%s" = orig."%s");'
-            str_data_errors = str_data_errors % (
+            str_data_errors = 'SELECT COUNT(*) FROM "{0}" dest WHERE NOT EXISTS (SELECT 1 FROM "{1}" orig WHERE dest."{2}" = orig."{3}");'
+            str_data_errors = str_data_errors.format(
                 rel_destination_table, rel_origin_table, rel_foreign_key, rel_primary_key)
 
             self.write_it(self.f_find_data_errors, str_data_errors)
 
-            str_fix_errors_1 = 'INSERT INTO "%s" ("%s")' % (
+            str_fix_errors_1 = 'INSERT INTO "{0}" ("{1}")'.format(
                 rel_origin_table, rel_primary_key)
-            str_fix_errors_2 = 'SELECT DISTINCT detail."%s" \n  FROM "%s" AS detail \n LEFT JOIN "%s" AS master ON detail."%s" = master."%s" \n WHERE master.id IS NULL;\n'
-            str_fix_errors_2 = str_fix_errors_2 % (
+            str_fix_errors_2 = 'SELECT DISTINCT detail."{0}" \n  FROM "{1}" AS detail \n LEFT JOIN "{2}" AS master ON detail."{3}" = master."{4}" \n WHERE master.id IS NULL;\n'
+            str_fix_errors_2 = str_fix_errors_2.format(
                 rel_foreign_key, rel_destination_table, rel_origin_table, rel_foreign_key, rel_primary_key)
 
             self.write_it(self.f_fix_data_errors, str_fix_errors_1)
@@ -416,8 +415,9 @@ class FileGDB:
             if schema == 'public':
                 continue
 
-            str_drop_schema = '\nDROP SCHEMA IF EXISTS \"%s\" CASCADE;' % schema
-            str_create_schema = 'CREATE SCHEMA \"%s\";' % schema
+            str_drop_schema = '\nDROP SCHEMA IF EXISTS \"{0}\" CASCADE;'.format(
+                schema)
+            str_create_schema = 'CREATE SCHEMA \"{0}\";'.format(schema)
             self.write_it(self.f_create_schemas, str_drop_schema)
             self.write_it(self.f_create_schemas, str_create_schema)
 
@@ -460,7 +460,7 @@ class FileGDB:
     # Compose and write sql to alter the schema of a table
     #
     def split_schemas(self, table, schema):
-        str_split_schemas = "ALTER TABLE \"%s\" SET SCHEMA \"%s\";" % (
+        str_split_schemas = "ALTER TABLE \"{0}\" SET SCHEMA \"{1}\";".format(
             table, schema)
         self.write_it(self.f_split_schemas, str_split_schemas)
 
@@ -468,11 +468,11 @@ class FileGDB:
     # Create indexes
     #
     def create_index(self, table, field):
-        idx_name = "%s_%s_idx" % (table, field)
+        idx_name = "{0}_{1}_idx".format(table, field)
 
         if idx_name not in self.indexes:
             self.indexes.append(idx_name)
-            str_index = "CREATE UNIQUE INDEX \"%s\" ON \"%s\" (\"%s\"); \n" % (
+            str_index = "CREATE UNIQUE INDEX \"{0}\" ON \"{1}\" (\"{2}\"); \n".format(
                 idx_name, table, field)
             self.write_it(self.f_create_indexes, str_index)
 
@@ -480,12 +480,13 @@ class FileGDB:
     # Create foreign key constraints
     #
     def create_foreign_key_constraint(self, table_details, fkey, table_master, pkey):
-        fkey_name = "%s_%s_%s_fkey" % (table_details, fkey, table_master)
+        fkey_name = "{0}_{1}_{2}_fkey".format(
+            table_details, fkey, table_master)
 
         if fkey_name not in self.constraints:
             self.constraints.append(fkey_name)
-            str_constraint = 'ALTER TABLE "%s" ADD CONSTRAINT "%s" FOREIGN KEY ("%s") REFERENCES "%s" ("%s") NOT VALID; \n'
-            str_constraint = str_constraint % (
+            str_constraint = 'ALTER TABLE "{0}" ADD CONSTRAINT "{1}" FOREIGN KEY ("{2}") REFERENCES "{3}" ("{4}") NOT VALID; \n'
+            str_constraint = str_constraint.format(
                 table_details, fkey_name, fkey, table_master, pkey)
             self.write_it(self.f_create_constraints, str_constraint)
 

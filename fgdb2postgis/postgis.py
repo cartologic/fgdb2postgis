@@ -4,7 +4,7 @@
 # Description: Use ogr2ogr to conevert file geodatabase to postgis
 #              Apply number of sql scripts to create indexes and foreign key constraints
 # Author: George Ioannou
-# Copyright: Cartologic 2017
+# Copyright: Cartologic 2017-2020
 #
 ##
 import sys
@@ -23,17 +23,17 @@ class PostGIS:
         self.password = password
         self.conn = None
         self.conn_string = (
-            "dbname=%s host=%s port=%s user=%s password=%s" % (
+            "dbname={0} host={1} port={2} user={3} password={4}".format(
                 self.dbname, self.host, self.port, self.user, self.password)
         )
 
     def info(self):
         print('\nPostGIS Info:')
-        print(' Database: %s (%s)' % (self.dbname, self.t_srs))
-        print(' Host: %s' % self.host)
-        print(' Port: %s' % self.port)
-        print(' User: %s' % self.user)
-        print(' Password: %s' % self.password)
+        print(' Database: {0} ({1})'.format(self.dbname, self.t_srs))
+        print(' Host: {}'.format(self.host))
+        print(' Port: {}'.format(self.port))
+        print(' User: {}'.format(self.user))
+        print(' Password: {}'.format(self.password))
 
     def connect(self):
         try:
@@ -41,7 +41,7 @@ class PostGIS:
             print('\nConnect to database ...')
         except psycopg2.Error as err:
             print(str(err))
-            print('\nUnable to connect to database %s ...' % self.dbname)
+            print('\nUnable to connect to database {} ...'.format(self.dbname))
             sys.exit(1)
 
     def disconnect(self):
@@ -55,34 +55,17 @@ class PostGIS:
 
         print("\nLoading database tables ...")
 
-        # ds_fgdb = ogr.Open(filegdb.workspace)
-        # ds_psql = ogr.Open("PG: {0}".format(self.conn_string), 1)
-        # if ds_psql is None:
-        # 	raise RuntimeError("Unable to connect to {0}".format(self.conn_string))
-
-        # options = [
-        # 	'fid=id',
-        # 	'geometry_name=geom',
-        # 	'launder=no',
-        # 	'overwrite=yes',
-        # 	'promote_to_multi=yes'
-        # ]
-
-        # for layer in ds_fgdb:
-        # 	print(" {0}".format(layer.GetName()))
-        # 	ds_psql.CopyLayer(layer, layer.GetName(), options)
-
-        cmd = 'ogr2ogr -f "PostgreSQL" "PG:%s" \
+        cmd = 'ogr2ogr -f "PostgreSQL" "PG:{0}" \
 			-progress \
 			-append \
-			-a_srs %s \
-			-t_srs %s \
+			-a_srs {1} \
+			-t_srs {2} \
 			-lco fid=id \
 			-lco launder=no \
 			-lco geometry_name=geom \
 			--config OGR_TRUNCATE YES \
 			--config PG_USE_COPY YES \
-			%s' % (self.conn_string, filegdb.a_srs, self.t_srs, filegdb.workspace)
+			{3}'.format(self.conn_string, filegdb.a_srs, self.t_srs, filegdb.workspace)
 
         system(cmd)
 
@@ -95,7 +78,7 @@ class PostGIS:
 
         for sql_file in sql_files:
             sql_file = path.join(path.abspath(
-                path.dirname(__file__)), 'sql_files/%s' % sql_file)
+                path.dirname(__file__)), 'sql_files/{}'.format(sql_file))
             self.execute_sql(sql_file)
 
     def create_schemas(self, filegdb):
@@ -123,7 +106,7 @@ class PostGIS:
         cursor = self.conn.cursor()
 
         if path.exists(sql_file):
-            # print(" %s" % sql_file
+            # print(" {}".format(sql_file))
             with open(sql_file, "r") as sql:
                 code = sql.read()
                 cursor.execute(code)
