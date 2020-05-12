@@ -12,14 +12,15 @@ Now you can have domain experience in QGIS that is stored in the database and no
 
 Installation
 ------------
-This package should be installed only on windows systems because of ArcGIS (Arcpy) limitation.
+This package should be installed only on windows systems into ArcGIS Pro conda environment because of Arcpy.
 
 Install required packages::
 
     pip install numpy>=1.12.0
     pip install psycopg2>=2.6.2
     pip install pyyaml>=3.12
-    pip install archook==1.1.0
+    pip install ruamel.yaml>=0.15.35
+    pip install awesome-slugify==1.6.5
 
 Install fgdb2postgis::
 
@@ -30,21 +31,28 @@ Install fgdb2postgis::
   * This tool requires to have GDAL/OGR libraries and ArcGIS 10.3 or later installed.
   * ESRI Python packages usually under C:\Python27\ArcGIS10.* might not have pip included make sure to
 
+    * Install Anaconda/Miniconda
     * Install pip if not already installed
     * Setup ESRI python and GDAL/OGR in windows path environment variable
+
+  * Activate python environment
+  
+    * activate C:\\Users\\<user>\\AppData\\Local\\ESRI\\conda\\envs\\<esri-py>
 
 Usage
 -----
 Create a yaml file mapping the file geodatabase's feature datasets, feature classes and tables to postgresql's schemas. It is required that the yaml file have the same name with the file geodatabase with the extension .yaml
+If the yaml file does not exist it will be created automatically, splitting the file geodatabase feature datasets to postgresql schemas
+Since we have the yaml file with the entire schema of the file geodatabase we can modified it and run the tool again.
 
 Example::
 
     filegdb: sample.gdb
-       yaml: sample.gdb.yaml
+       yaml: sample.gdb.yml
 
 .. note::
-  The Yaml file should be located in the same folder with the file geodatabase.
-  If run without the yaml file will convert the full database and load it into the public schema.
+  The yaml file should be located in the same folder and having the same name as the file geodatabase.
+  If the yaml file does not exist it will be created by inspecting the file geodatabase and converting the feature datasets into schemas.
   The schema lookup_tables will always be created regardless of the yaml file.
 
 Yaml file example::
@@ -94,10 +102,12 @@ Command line options::
     fgdb2postgis -h
     fgdb2postgis -f filegdb
                  -p postgis
-                 --host=host
-                 --port=port
-                 --user=user
-                 --password=password
+	               --host=host
+	               --port=port
+	               --user=user
+	               --password=password
+                 --a_srs=a_srs
+	               --t_srs=t_srs
 
 .. tip::
   * This tool is tested with PostgreSQL v 9.5 and PostGIS v 2.2
@@ -108,11 +118,19 @@ Command line options::
   * The target postgis database should exists and be EMPTY.
   * The tool will OVERWRITE any tables having the same name with the tables in the file geodatabase.
 
-Credits
--------
-
-Credit goes to `James Ramm <ramshacklerecording@gmail.com>`_ who kindly developed and shared the archook package.
+Last Update:
+  * Migrate to Python 3.X (ArcGIS Pro)
+  * 11/05/2020
 
 License
 -------
-GNU Public License (GPL) Version 3
+
+MIT License
+
+Copyright (c) 2020 George Ioannou `<gmioannou@gmail.com> <gmioannou@gmail.com>`_
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

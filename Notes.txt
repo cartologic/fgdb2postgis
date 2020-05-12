@@ -1,0 +1,4 @@
+activate C:\Users\geo\AppData\Local\ESRI\conda\envs\esri-py
+
+ogr2ogr -f "PostgreSQL" "PG: user=gisadmin password=grafica dbname=kieindb" kiein10.gdb -overwrite -progress -skipfailures
+

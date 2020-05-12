@@ -15,7 +15,7 @@ setup(
 		'numpy>=1.12.0',
 		'psycopg2>=2.6.2',
         'ruamel.yaml>=0.15.35',
-		'archook==1.1.0',
+        'awesome-slugify==1.6.5'
     ],
     license="GNU",
     keywords='fgdb2postgis',

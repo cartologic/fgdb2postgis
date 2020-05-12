@@ -6,31 +6,29 @@
  # Copyright: Cartologic 2017
  #
  ##
-import getopt, sys
-from .filegdb import FileGDB
-from .postgis import PostGIS
-from .version import get_version
-
-reload(sys)
-sys.setdefaultencoding('utf8')
+import getopt
+import sys
+from fgdb2postgis.filegdb import FileGDB
+from fgdb2postgis.postgis import PostGIS
+from fgdb2postgis.version import get_version
 
 def show_usage():
-	print "Usage:"
-	print "  fgdb2postgis.py -v"
-	print "  fgdb2postgis.py -h"
-	print "  fgdb2postgis.py -f filegdb"
-	print "                  -p postgis"
-	print "                  --a_srs=a_srs"
-	print "                  --t_srs=t_srs"
-	print "                  --host=host"
-	print "                  --port=port"
-	print "                  --user=user"
-	print "                  --password=password"
+	print("Usage:")
+	print("  fgdb2postgis.py -v")
+	print("  fgdb2postgis.py -h")
+	print("  fgdb2postgis.py -f filegdb")
+	print("                  -p postgis")
+	print("                  --a_srs=a_srs")
+	print("                  --t_srs=t_srs")
+	print("                  --host=host")
+	print("                  --port=port")
+	print("                  --user=user")
+	print("                  --password=password")
 
 	sys.exit(1)
 
 def show_version():
-	print "Version: %s"%(get_version()) 
+	print("Version: %s"%(get_version()))
 	sys.exit(1)
 
 if len(sys.argv) not in [2,11]:
@@ -39,7 +37,7 @@ else:
 	try:
 		options, remainder = getopt.getopt(sys.argv[1:], 'hvf:p:', ['fgdb=', 'pgdb=', 'a_srs=', 't_srs=', 'host=', 'port=', 'user=', 'password='])
 	except getopt.GetoptError as err:
-		print str(err)
+		print(str(err))
 		show_usage()
 
 for opt, arg in options:
@@ -89,4 +87,4 @@ def main():
 
 	filegdb.cleanup()
 
-	print "\nComplete!"
+	print("\nComplete!")
