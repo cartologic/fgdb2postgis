@@ -12,13 +12,11 @@ Now you can have domain experience in QGIS that is stored in the database and no
 
 Installation
 ------------
-This package should be installed only on windows systems into ArcGIS Pro conda environment because of Arcpy.
+This package should be installed on windows systems into ArcGIS Pro conda environment. (because of Arcpy)
 
 Install required packages::
-
     pip install numpy>=1.12.0
     pip install psycopg2>=2.6.2
-    pip install pyyaml>=3.12
     pip install ruamel.yaml>=0.15.35
     pip install awesome-slugify==1.6.5
 
@@ -101,13 +99,13 @@ Command line options::
 
     fgdb2postgis -h
     fgdb2postgis -f filegdb
-                 -p postgis
-	               --host=host
-	               --port=port
-	               --user=user
-	               --password=password
-                 --a_srs=a_srs
-	               --t_srs=t_srs
+                -p postgis
+                --host=host
+                --port=port
+                --user=user
+                --password=password
+                --a_srs=a_srs
+                --t_srs=t_srs
 
 .. tip::
   * This tool is tested with PostgreSQL v 9.5 and PostGIS v 2.2
