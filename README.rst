@@ -21,7 +21,6 @@ Install required packages::
   * pip install awesome-slugify==1.6.5
 
 Install fgdb2postgis::
-
   * pip install fgdb2postgis
 
 .. note::
@@ -123,7 +122,7 @@ Command line options::
   * The tool will OVERWRITE any tables having the same name with the tables in the file geodatabase.
 
 Last Update:
-  * Migrate to Python 3.X (ArcGIS Pro)
+  * Migrate to Python 3.6.9 (ArcGIS Pro 2.5.1) 
   * 12 May 2020
 
 License

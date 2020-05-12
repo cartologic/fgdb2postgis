@@ -1,5 +1,5 @@
 __author__ = 'George Ioannou'
-__version__ = (0, 3, 1, 'final', 0)
+__version__ = (0, 3, 3, 'final', 0)
 
 from fgdb2postgis.filegdb import FileGDB
 from fgdb2postgis.postgis import PostGIS
