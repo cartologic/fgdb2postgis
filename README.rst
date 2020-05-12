@@ -108,8 +108,14 @@ Command line options::
                 --t_srs=t_srs
 
 .. tip::
-  * This tool is tested with PostgreSQL v 9.5 and PostGIS v 2.2
-  * Currently the tool support only Latin Name fields and suptypes, domain values can be in any   language, make sure to set the corresponding windows domain
+  * This tool is tested with:
+
+    * GDAL/OGR v 1.11.4
+    * PostgreSQL v 11.7
+    * PostGIS v 2.5
+    * ArcGIS Pro v 2.5.1
+
+  * The tool support only Latin characters for field names and suptypes while domain values and descriptions can be in any locale.
 
 .. warning::
   * DO NOT apply this tool in a production postgis database!
@@ -118,8 +124,8 @@ Command line options::
 
 Last Update:
   * Migrate to Python 3.X (ArcGIS Pro)
-  * 11/05/2020
-
+  * 12 May 2020
+  
 License
 -------
 
