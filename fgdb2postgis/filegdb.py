@@ -194,8 +194,14 @@ class FileGDB:
     def create_constraints_referencing_domains(self, layer):
         dmcode = "Code"
         dmcode_desc = "Description"
+        subtypes = {}
 
-        subtypes = arcpy.da.ListSubtypes(layer)
+        try:
+            subtypes = arcpy.da.ListSubtypes(layer)
+        except:
+            # By default any other errors will be caught here
+            e = sys.exc_info()[1]
+            print(e.args[0])
 
         for stcode, v1 in subtypes.items():
             for k2, v2 in v1.items():
@@ -263,56 +269,65 @@ class FileGDB:
     # Create subtypes table for layer/field and insert records (list of values)
     #
     def create_subtypes_table(self, layer):
-        subtypes_dict = arcpy.da.ListSubtypes(layer)
+        subtypes_dict = {}
 
-        subtype_fields = {key: value['SubtypeField']
-                          for key, value in subtypes_dict.items()}
-        subtype_values = {key: value['Name']
-                          for key, value in subtypes_dict.items()}
+        try:
+            subtypes_dict = arcpy.da.ListSubtypes(layer)
+        except:
+            # By default any other errors will be caught here
+            e = sys.exc_info()[1]
+            print(e.args[0])
 
-        key, field = list(subtype_fields.items())[0]
+        if subtypes_dict:
 
-        if len(field) > 0:
+            subtype_fields = {key: value['SubtypeField']
+                              for key, value in subtypes_dict.items()}
+            subtype_values = {key: value['Name']
+                              for key, value in subtypes_dict.items()}
 
-            # find subtype field type
-            field_type = None
-            for f in arcpy.ListFields(layer):
-                if f.name == field:
-                    field_type = f.type
+            key, field = list(subtype_fields.items())[0]
 
-            # convert field to upper case and try again if not found
-            if field_type == None:
-                field = field.upper()
+            if len(field) > 0:
+
+                # find subtype field type
+                field_type = None
                 for f in arcpy.ListFields(layer):
-                    if f.name.upper() == field:
+                    if f.name == field:
                         field_type = f.type
 
-            subtypes_table = "{0}_{1}_lut".format(layer, field)
-            subtypes_table = slugify(
-                subtypes_table, separator='_', lowercase=False)
-            print(" {}".format(subtypes_table))
+                # convert field to upper case and try again if not found
+                if field_type == None:
+                    field = field.upper()
+                    for f in arcpy.ListFields(layer):
+                        if f.name.upper() == field:
+                            field_type = f.type
 
-            if not arcpy.Exists(subtypes_table):
-                # create subtypes table
-                arcpy.CreateTable_management(self.workspace, subtypes_table)
-                arcpy.AddField_management(subtypes_table, field, field_type)
-                arcpy.AddField_management(
-                    subtypes_table, "Description", "String")
+                subtypes_table = "{0}_{1}_lut".format(layer, field)
+                subtypes_table = slugify(
+                    subtypes_table, separator='_', lowercase=False)
+                print(" {}".format(subtypes_table))
 
-                # insert records (list of values)
-                cur = arcpy.da.InsertCursor(subtypes_table, "*")
-                oid = 1
-                for code, desc in subtype_values.items():
-                    # print("  {0} {1}".format(code, desc))
-                    cur.insertRow([oid, code, desc])
-                    oid += 1
+                if not arcpy.Exists(subtypes_table):
+                    # create subtypes table
+                    arcpy.CreateTable_management(self.workspace, subtypes_table)
+                    arcpy.AddField_management(subtypes_table, field, field_type)
+                    arcpy.AddField_management(
+                        subtypes_table, "Description", "String")
 
-                del cur
+                    # insert records (list of values)
+                    cur = arcpy.da.InsertCursor(subtypes_table, "*")
+                    oid = 1
+                    for code, desc in subtype_values.items():
+                        # print("  {0} {1}".format(code, desc))
+                        cur.insertRow([oid, code, desc])
+                        oid += 1
 
-            self.create_index(subtypes_table, field)
-            self.create_foreign_key_constraint(
-                layer, field, subtypes_table, field)
-            self.split_schemas(subtypes_table, "lookup_tables")
+                    del cur
+
+                self.create_index(subtypes_table, field)
+                self.create_foreign_key_constraint(
+                    layer, field, subtypes_table, field)
+                self.split_schemas(subtypes_table, "lookup_tables")
 
     # -------------------------------------------------------------------------------
     # Process relations
