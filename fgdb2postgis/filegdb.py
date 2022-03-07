@@ -10,11 +10,22 @@
 from os import getcwd, mkdir, path
 
 from ruamel.yaml import YAML
-from slugify import slugify
+from slugify import Slugify
 
 import arcpy
+import sys
 
-yaml = YAML()
+
+slugify = Slugify(translate=None)
+
+
+class YAMLObject(YAML):
+    def __init__(self):
+        YAML.__init__(self)
+        self.allow_unicode = True
+        self.encoding = 'utf-8'
+
+yaml = YAMLObject()
 
 
 class FileGDB:
@@ -30,6 +41,7 @@ class FileGDB:
         self.tables = {}
         self.indexes = []
         self.constraints = []
+        self.views = []
         self.init_paths()
         self.setenv()
         self.parse_yaml()
@@ -74,7 +86,7 @@ class FileGDB:
             print("\nCreating default YAML file ...")
             self.create_yaml()
 
-        with open(self.yamlfile_path, 'r') as ymlfile:
+        with open(self.yamlfile_path, 'r', encoding="utf-8") as ymlfile:
             data_map = yaml.load(ymlfile)
             for key_type, value_items in data_map.items():
                 if (key_type == "Schemas"):
@@ -85,6 +97,7 @@ class FileGDB:
                     self.feature_classes = value_items
                 elif (key_type == "Tables"):
                     self.tables = value_items
+
 
         # lookup_tables is a default schema and it will host subtypes, domains
         if 'lookup_tables' not in self.schemas:
@@ -100,17 +113,19 @@ class FileGDB:
             mkdir(self.sqlfolder_path)
 
         self.f_create_schemas = open(
-            path.join(self.sqlfolder_path, "create_schemas.sql"), "w")
+            path.join(self.sqlfolder_path, "create_schemas.sql"), "w", encoding='utf-8')
         self.f_split_schemas = open(
-            path.join(self.sqlfolder_path, "split_schemas.sql"), "w")
+            path.join(self.sqlfolder_path, "split_schemas.sql"), "w", encoding='utf-8')
         self.f_create_indexes = open(
-            path.join(self.sqlfolder_path, "create_indexes.sql"), "w")
+            path.join(self.sqlfolder_path, "create_indexes.sql"), "w", encoding='utf-8')
         self.f_create_constraints = open(
-            path.join(self.sqlfolder_path, "create_constraints.sql"), "w")
+            path.join(self.sqlfolder_path, "create_constraints.sql"), "w", encoding='utf-8')
+        self.f_create_views = open(
+            path.join(self.sqlfolder_path, "create_views.sql"), "w", encoding='utf-8')
         self.f_find_data_errors = open(
-            path.join(self.sqlfolder_path, "find_data_errors.sql"), "w")
+            path.join(self.sqlfolder_path, "find_data_errors.sql"), "w", encoding='utf-8')
         self.f_fix_data_errors = open(
-            path.join(self.sqlfolder_path, "fix_data_errors.sql"), "w")
+            path.join(self.sqlfolder_path, "fix_data_errors.sql"), "w", encoding='utf-8')
 
         self.write_headers()
 
@@ -123,6 +138,7 @@ class FileGDB:
         self.f_split_schemas.close()
         self.f_create_indexes.close()
         self.f_create_constraints.close()
+        self.f_create_views.close()
         self.f_find_data_errors.close()
         self.f_fix_data_errors.close()
 
@@ -135,13 +151,16 @@ class FileGDB:
 
         self.write_it(self.f_create_indexes, "\n-- Domains")
         self.write_it(self.f_create_constraints, "\n-- Domains")
+        self.write_it(self.f_create_views, "\n-- Domains")
         self.write_it(self.f_split_schemas, "\n-- Domains")
 
         # create table for each domain
         domains_list = arcpy.da.ListDomains(self.workspace)
         for domain in domains_list:
             self.create_domain_table(domain)
-
+        
+        print('finished creating domain tables')
+        
         # create fk constraints for data tables referencing domain tables
         tables_list = arcpy.ListTables()
         tables_list.sort()
@@ -278,17 +297,17 @@ class FileGDB:
             e = sys.exc_info()[1]
             print(e.args[0])
 
+
         if subtypes_dict:
-
+                
             subtype_fields = {key: value['SubtypeField']
-                              for key, value in subtypes_dict.items()}
+                            for key, value in subtypes_dict.items()}
             subtype_values = {key: value['Name']
-                              for key, value in subtypes_dict.items()}
+                            for key, value in subtypes_dict.items()}
 
-            key, field = list(subtype_fields.items())[0]
+            key, field = list(subtype_fields.items())[0]                
 
             if len(field) > 0:
-
                 # find subtype field type
                 field_type = None
                 for f in arcpy.ListFields(layer):
@@ -472,6 +491,123 @@ class FileGDB:
                     self.split_schemas(table, schema)
 
     # -------------------------------------------------------------------------------
+    # Process Views
+    # Prepare Views with joins
+    # 
+    def _generate_view_for_layer(self, fc, schema="public"):
+        items = []
+        fields_to_be_replaced = []
+        items.append('CREATE TABLE final_data.{0} as (SELECT'.format(fc))
+        letter_assignment = bytes('aa', 'utf-8')
+        letter_assignment_d = None
+        letter_assignment_s = None
+        items.append('\n'.join(self._get_layer_fields(fc, letter_assignment)))
+        items.append('FROM "{}"."{}" {}'.format(schema, fc, letter_assignment.decode('utf-8')))
+
+        # Domains
+        subtypes = arcpy.da.ListSubtypes(fc)
+        created_table = []
+        for stcode, v1 in subtypes.items():
+            for k2, v2 in v1.items():
+                if k2 == 'FieldValues':
+                    for dmfield, v3 in v2.items():
+                        if v3[1] is not None:
+                            dmname = slugify(
+                            v3[1].name, separator='_', lowercase=False)
+                            dmtable = dmname + '_lut'
+                            if dmtable not in created_table:
+                                if letter_assignment[0] >= 122:
+                                    letter_assignment = bytes([letter_assignment[0], letter_assignment[1] + 1])
+                                else:
+                                    letter_assignment = bytes([letter_assignment[0] + 1, letter_assignment[1]])
+                                items.append('LEFT OUTER JOIN \n\tlookup_tables."{}" {} on aa."{}" = {}."Code"'.format(
+                                    dmtable, letter_assignment.decode('utf-8'), dmfield, letter_assignment.decode('utf-8')
+                                ))
+                                fields_to_be_replaced.append(
+                                    {'from': 'aa."{}"'.format(dmfield), 
+                                    'to': '{}."Description" as "{}"'.format(letter_assignment.decode('utf-8'), dmfield)})
+                                created_table.append(dmtable)
+        
+        # Subtypes
+        if subtypes: 
+            subtype_fields = {key: value['SubtypeField']
+                            for key, value in subtypes.items()}
+            subtype_values = {key: value['Name']
+                            for key, value in subtypes.items()}
+            key, field = list(subtype_fields.items())[0]
+            if len(field) > 0:
+                # find subtype field type
+                field_type = None
+                for f in arcpy.ListFields(fc):
+                    if f.name == field:
+                        field_type = f.type
+
+                # convert field to upper case and try again if not found
+                if field_type == None:
+                    field = field.upper()
+                    for f in arcpy.ListFields(fc):
+                        if f.name.upper() == field:
+                            field_type = f.type
+                subtypes_table = "{0}_{1}_lut".format(fc, field)
+                if letter_assignment[0] >= 122:
+                    letter_assignment = bytes([letter_assignment[0], letter_assignment[1] + 1])
+                else:
+                    letter_assignment = bytes([letter_assignment[0] + 1, letter_assignment[1]])
+                items.append('LEFT OUTER JOIN \n\tlookup_tables."{}" {} on aa."{}" = {}."{}"'.format(
+                    subtypes_table, letter_assignment.decode('utf-8'), field, letter_assignment.decode('utf-8'), field
+                ))
+                fields_to_be_replaced.append({'from': 'aa."{}"'.format(field), 'to': '{}."Description" as "{}"'.format(letter_assignment.decode('utf-8'), field)})
+        
+        result = '\n'.join(items)
+        for field in fields_to_be_replaced:
+            _field_from = '\t{},'.format(field['from'])
+            _field_to = '\t{},'.format(field['to'])
+
+            result = result.replace(_field_from, _field_to, 1)
+        
+        result = "{});\n\n".format(result)
+        result = "{0};\n".format(result, fc)
+        result = "{0}CREATE SEQUENCE final_data.{1}_ogc_fid_seq INCREMENT 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;\n".format(result, fc)
+        result = '{0}SELECT setval(''\'final_data.{1}_ogc_fid_seq''\', coalesce(max(id), 1)) from  final_data.{1};\n'.format(result, fc)
+        result = '{0}ALTER TABLE final_data.{1} RENAME id TO ogc_fid;\n'.format(result, fc)
+        result = '{0}ALTER TABLE final_data.{1} ALTER COLUMN ogc_fid SET DEFAULT nextval(''\'final_data.{1}_ogc_fid_seq''\'::regclass);\n'.format(result, fc)
+        result = '{0}ALTER TABLE final_data.{1} ADD PRIMARY KEY (ogc_fid);\n'.format(result, fc)
+        result = "{0}CREATE INDEX {1}_geom_geom_idx ON final_data.{1} USING gist (geom) TABLESPACE pg_default;\n".format(result, fc)
+
+        self.write_it(self.f_create_views, "{}\n\n".format(result))
+
+    def _get_layer_fields(self, layer, letter_assignment):
+        fields = []
+        subtypes = arcpy.da.ListSubtypes(layer)
+        for stcode, v1 in subtypes.items():
+            for k2, v2 in v1.items():
+                if k2 == 'FieldValues':
+                    for dmfield, v3 in v2.items():
+                        if dmfield == 'OBJECTID':
+                            fields.append('\t{}."{}",'.format(letter_assignment.decode('utf-8'), 'id'))
+                            fields.append('\t{}."{}",'.format(letter_assignment.decode('utf-8'), 'geom'))
+                        elif dmfield.lower() == 'shape':
+                            continue
+                        else:
+                            fields.append('\t{}."{}",'.format(letter_assignment.decode('utf-8'), dmfield))
+            break
+        fields[-1] = fields[-1].replace(',', '')
+        return fields
+        
+    def process_views(self):
+        # get featureclasses outside of datasets
+        self.write_it(self.f_create_views, "{}".format('CREATE SCHEMA IF NOT EXISTS final_data;\n\n'))
+
+        for layer in arcpy.ListFeatureClasses("*"):
+            self._generate_view_for_layer(layer, schema='public')
+
+        # get fetatureclasses within datasets
+        fds_list = arcpy.ListDatasets("*", "Feature")
+        for fds in fds_list:
+            for layer in arcpy.ListFeatureClasses("*", "", fds):
+                self._generate_view_for_layer(layer, schema=fds)
+
+    # -------------------------------------------------------------------------------
     # Compose and write sql to alter the schema of a table
     #
     def split_schemas(self, table, schema):
@@ -497,13 +633,27 @@ class FileGDB:
     def create_foreign_key_constraint(self, table_details, fkey, table_master, pkey):
         fkey_name = "{0}_{1}_{2}_fkey".format(
             table_details, fkey, table_master)
-
+        print(fkey_name)
         if fkey_name not in self.constraints:
             self.constraints.append(fkey_name)
             str_constraint = 'ALTER TABLE "{0}" ADD CONSTRAINT "{1}" FOREIGN KEY ("{2}") REFERENCES "{3}" ("{4}") NOT VALID; \n'
             str_constraint = str_constraint.format(
                 table_details, fkey_name, fkey, table_master, pkey)
             self.write_it(self.f_create_constraints, str_constraint)
+
+    # -------------------------------------------------------------------------------
+    # Create feature class view with relation
+    #
+    def create_view_feature_class(self, table_details, fkey, table_master, pkey):
+        view_name = "{0}_{1}_{2}_view".format(
+            table_details, fkey, table_master)
+
+        if view_name not in self.views:
+            self.views.append(view_name)
+            str_view = 'ALTER TABLE "{0}" ADD CONSTRAINT "{1}" FOREIGN KEY ("{2}") REFERENCES "{3}" ("{4}") NOT VALID; \n'
+            str_view = str_view.format(
+                table_details, view_name, fkey, table_master, pkey)
+            self.write_it(self.f_create_view, str_view)
 
     # -------------------------------------------------------------------------------
     # Write headers to sql files
@@ -540,7 +690,7 @@ class FileGDB:
         # featureclasses in root
         fclist = self.get_feature_classes(None)
         if fclist != None:
-            fclist.sort()
+            fclist.sort()        
         fcdict['FeatureClasses'].update({'public': fclist})
 
         # tables
@@ -552,16 +702,16 @@ class FileGDB:
         # schemas
         schemasdict.update({'Schemas': fdslist})
 
-        with open(self.yamlfile_path, 'w') as outfile:
+        with open(self.yamlfile_path, 'w', encoding="utf-8") as outfile:
             yaml.dump(schemasdict, outfile)
 
-        with open(self.yamlfile_path, 'a') as outfile:
+        with open(self.yamlfile_path, 'a', encoding="utf-8") as outfile:
             yaml.dump(fdsdict, outfile)
 
-        with open(self.yamlfile_path, 'a') as outfile:
+        with open(self.yamlfile_path, 'a', encoding="utf-8") as outfile:
             yaml.dump(fcdict, outfile)
 
-        with open(self.yamlfile_path, 'a') as outfile:
+        with open(self.yamlfile_path, 'a', encoding="utf-8") as outfile:
             yaml.dump(tablesdict, outfile)
 
     def get_feature_datasets(self):
