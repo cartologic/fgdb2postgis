@@ -63,10 +63,13 @@ class PostGIS:
 			-lco fid=id \
 			-lco launder=no \
 			-lco geometry_name=geom \
+                        -overwrite \
+                        -nlt PROMOTE_TO_MULTI \
+                        -nlt CONVERT_TO_LINEAR  \
 			--config OGR_TRUNCATE YES \
 			--config PG_USE_COPY YES \
 			{3}'.format(self.conn_string, filegdb.a_srs, self.t_srs, filegdb.workspace)
-
+        
         system(cmd)
 
     def update_views(self):
@@ -95,11 +98,13 @@ class PostGIS:
             'fix_data_errors.sql',
             'create_indexes.sql',
             'create_constraints.sql',
-            'split_schemas.sql'
+            'split_schemas.sql',
+            'create_views.sql'
         ]
 
         for sql_file in sql_files:
             sql_file = path.join(filegdb.sqlfolder_path, sql_file)
+            print(sql_file)
             self.execute_sql(sql_file)
 
     def execute_sql(self, sql_file):
@@ -107,8 +112,9 @@ class PostGIS:
 
         if path.exists(sql_file):
             # print(" {}".format(sql_file))
-            with open(sql_file, "r") as sql:
+            with open(sql_file, "r",encoding="utf-8") as sql:
                 code = sql.read()
+                print(code)
                 cursor.execute(code)
         else:
             print(" Unable to locate sql file:")
