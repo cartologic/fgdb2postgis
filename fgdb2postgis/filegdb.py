@@ -127,8 +127,6 @@ class FileGDB:
         self.f_fix_data_errors = open(
             path.join(self.sqlfolder_path, "fix_data_errors.sql"), "w", encoding='utf-8')
 
-        self.write_headers()
-
     # -------------------------------------------------------------------------------
     # close sql files
     #
@@ -149,17 +147,10 @@ class FileGDB:
     def process_domains(self):
         print("\nProcessing domains ...")
 
-        self.write_it(self.f_create_indexes, "\n-- Domains")
-        self.write_it(self.f_create_constraints, "\n-- Domains")
-        self.write_it(self.f_create_views, "\n-- Domains")
-        self.write_it(self.f_split_schemas, "\n-- Domains")
-
         # create table for each domain
         domains_list = arcpy.da.ListDomains(self.workspace)
         for domain in domains_list:
             self.create_domain_table(domain)
-        
-        print('finished creating domain tables')
         
         # create fk constraints for data tables referencing domain tables
         tables_list = arcpy.ListTables()
@@ -197,8 +188,6 @@ class FileGDB:
         domain_field = "Code"
         domain_field_desc = "Description"
 
-        print(" {}".format(domain_table))
-
         if not arcpy.Exists(domain_table):
             arcpy.DomainToTable_management(
                 self.workspace, domain.name, domain_table, domain_field, domain_field_desc)
@@ -218,9 +207,7 @@ class FileGDB:
         try:
             subtypes = arcpy.da.ListSubtypes(layer)
         except:
-            # By default any other errors will be caught here
-            e = sys.exc_info()[1]
-            print(e.args[0])
+            print(layer, "List subtypes exception")
 
         for stcode, v1 in subtypes.items():
             for k2, v2 in v1.items():
@@ -254,10 +241,6 @@ class FileGDB:
 
     def process_subtypes(self):
         print("\nProcessing subtypes ...")
-
-        self.write_it(self.f_create_indexes, "\n-- Subtypes")
-        self.write_it(self.f_create_constraints, "\n-- Subtypes")
-        self.write_it(self.f_split_schemas, "\n-- Subtypes")
 
         # create subtypes table for tables
         tables_list = arcpy.ListTables()
@@ -293,13 +276,9 @@ class FileGDB:
         try:
             subtypes_dict = arcpy.da.ListSubtypes(layer)
         except:
-            # By default any other errors will be caught here
-            e = sys.exc_info()[1]
-            print(e.args[0])
+            print(layer, "An exception occurred")
 
-
-        if subtypes_dict:
-                
+        if subtypes_dict:                
             subtype_fields = {key: value['SubtypeField']
                             for key, value in subtypes_dict.items()}
             subtype_values = {key: value['Name']
@@ -321,10 +300,9 @@ class FileGDB:
                         if f.name.upper() == field:
                             field_type = f.type
 
-                subtypes_table = "{0}_{1}_lut".format(layer, field)
+                subtypes_table = "{0}_{1}_sub".format(layer, field)
                 subtypes_table = slugify(
                     subtypes_table, separator='_', lowercase=False)
-                print(" {}".format(subtypes_table))
 
                 if not arcpy.Exists(subtypes_table):
                     # create subtypes table
@@ -356,11 +334,6 @@ class FileGDB:
     def process_relations(self):
         print("\nProcessing relations ...")
 
-        self.write_it(self.f_create_indexes,
-                      "\n-- Relations (tables and feature classes)")
-        self.write_it(self.f_create_constraints,
-                      "\n-- Relations (tables and feature classes)")
-
         relClassSet = self.get_relationship_classes()
 
         for relClass in relClassSet:
@@ -380,9 +353,6 @@ class FileGDB:
 
             if rel_foreign_key not in [field.name for field in arcpy.ListFields(rel_destination_table)]:
                 rel_foreign_key = rel.originClassKeys[1][0].upper()
-
-            print(" {}".format(rel.name))
-            # print(" {0} -> {1}".format(rel_origin_table, rel_destination_table))
 
             self.create_index(rel_origin_table, rel_primary_key)
             self.create_foreign_key_constraint(
@@ -428,8 +398,11 @@ class FileGDB:
         relClasses = set()
         for i, fc in enumerate(fc_list):
             desc = arcpy.Describe(fc)
-            for j, rel in enumerate(desc.relationshipClassNames):
-                relClasses.add(rel)
+            try:
+                for j, rel in enumerate(desc.relationshipClassNames):
+                    relClasses.add(rel)
+            except:
+                print(fc, "An exception occurred")
 
         return relClasses
 
@@ -441,7 +414,7 @@ class FileGDB:
         print("\nProcessing schemas ...")
 
         # create extension postgis
-        str_create_extension = "\nCREATE EXTENSION IF NOT EXISTS postgis;"
+        str_create_extension = "CREATE EXTENSION IF NOT EXISTS postgis;\n"
         self.write_it(self.f_create_schemas, str_create_extension)
 
         # create schemas
@@ -449,14 +422,13 @@ class FileGDB:
             if schema == 'public':
                 continue
 
-            str_drop_schema = '\nDROP SCHEMA IF EXISTS \"{0}\" CASCADE;'.format(
-                schema)
-            str_create_schema = 'CREATE SCHEMA \"{0}\";'.format(schema)
+            str_drop_schema = 'DROP SCHEMA IF EXISTS \"{0}\" CASCADE;\n'.format(schema)
+            str_create_schema = 'CREATE SCHEMA \"{0}\";\n'.format(schema)
             self.write_it(self.f_create_schemas, str_drop_schema)
             self.write_it(self.f_create_schemas, str_create_schema)
 
         # split feature classes within feature datasets to schemas
-        self.write_it(self.f_split_schemas, "\n-- FeatureDatasets:")
+        self.write_it(self.f_split_schemas, "\n")
         print(" FeatureDatasets")
         for schema, datasets in self.feature_datasets.items():
             if schema == 'public':
@@ -469,7 +441,7 @@ class FileGDB:
                     self.split_schemas(fc, schema)
 
         # split feature classes outside of feature datasets to schemas
-        self.write_it(self.f_split_schemas, "\n-- FeatureClasses:")
+        self.write_it(self.f_split_schemas, "\n")
         print(" FeatureClasses")
         for schema, fcs in self.feature_classes.items():
             if schema == 'public':
@@ -480,7 +452,7 @@ class FileGDB:
                     self.split_schemas(fc, schema)
 
         # split tables to schemas
-        self.write_it(self.f_split_schemas, "\n-- Tables:")
+        self.write_it(self.f_split_schemas, "\n")
         print(" Tables")
         for schema, tables in self.tables.items():
             if schema == 'public':
@@ -611,7 +583,7 @@ class FileGDB:
     # Compose and write sql to alter the schema of a table
     #
     def split_schemas(self, table, schema):
-        str_split_schemas = "ALTER TABLE \"{0}\" SET SCHEMA \"{1}\";".format(
+        str_split_schemas = "ALTER TABLE \"{0}\" SET SCHEMA \"{1}\";\n".format(
             table, schema)
         self.write_it(self.f_split_schemas, str_split_schemas)
 
@@ -631,14 +603,12 @@ class FileGDB:
     # Create foreign key constraints
     #
     def create_foreign_key_constraint(self, table_details, fkey, table_master, pkey):
-        fkey_name = "{0}_{1}_{2}_fkey".format(
-            table_details, fkey, table_master)
-        print(fkey_name)
+        fkey_name = "{0}_{1}".format(table_details[0:30], table_master[0:30])
+
         if fkey_name not in self.constraints:
             self.constraints.append(fkey_name)
             str_constraint = 'ALTER TABLE "{0}" ADD CONSTRAINT "{1}" FOREIGN KEY ("{2}") REFERENCES "{3}" ("{4}") NOT VALID; \n'
-            str_constraint = str_constraint.format(
-                table_details, fkey_name, fkey, table_master, pkey)
+            str_constraint = str_constraint.format(table_details, fkey_name, fkey, table_master, pkey)
             self.write_it(self.f_create_constraints, str_constraint)
 
     # -------------------------------------------------------------------------------
@@ -659,7 +629,7 @@ class FileGDB:
     # Write headers to sql files
     #
     def write_headers(self):
-        str_message = "SET client_min_messages TO warning;"
+        str_message = "SET client_min_messages TO error;\n"
 
         self.write_it(self.f_create_schemas, str_message)
         self.write_it(self.f_create_indexes, str_message)
@@ -671,7 +641,7 @@ class FileGDB:
     # Write string to given open file
     #
     def write_it(self, out_file, string):
-        out_file.write(string + "\n")
+        out_file.write(string)
 
     def create_yaml(self):
         # initialize dictionaries
