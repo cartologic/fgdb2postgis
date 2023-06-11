@@ -11,7 +11,7 @@ import sys
 from os import path, system
 
 import psycopg2
-
+from psycopg2 import sql
 
 class PostGIS:
     def __init__(self, host, port, user, password, dbname, t_srs):
@@ -70,7 +70,10 @@ class PostGIS:
 			--config PG_USE_COPY YES \
 			{3}'.format(self.conn_string, filegdb.a_srs, self.t_srs, filegdb.workspace)
         
-        system(cmd)
+        try:
+            system(cmd)
+        except Exception as error:
+            print("An error occurred:", type(error).__name__, "–", error)
 
     def update_views(self):
         print("\nUpdating database views ...")
@@ -82,7 +85,7 @@ class PostGIS:
         for sql_file in sql_files:
             sql_file = path.join(path.abspath(
                 path.dirname(__file__)), 'sql_files/{}'.format(sql_file))
-            self.execute_sql(sql_file)
+            self.execute_sql_file(sql_file)
 
     def create_schemas(self, filegdb):
         print("\nCreating schemas ...")
@@ -90,7 +93,7 @@ class PostGIS:
         sql_files = ['create_schemas.sql']
         for sql_file in sql_files:
             sql_file = path.join(filegdb.sqlfolder_path, sql_file)
-            self.execute_sql(sql_file)
+            self.execute_sql_file(sql_file)
 
     def apply_sql(self, filegdb):
         print("\nApplying sql scripts ...")
@@ -104,21 +107,27 @@ class PostGIS:
 
         for sql_file in sql_files:
             sql_file = path.join(filegdb.sqlfolder_path, sql_file)
-            print(sql_file)
-            self.execute_sql(sql_file)
+            print(" {}".format(sql_file))
+            self.execute_sql_file(sql_file)
 
-    def execute_sql(self, sql_file):
+    def execute_sql_file(self, sql_file):
+        with open(sql_file, 'r', encoding="utf-8") as f:
+            sql_statements = f.read()
+
         cursor = self.conn.cursor()
+        statements = sql_statements.split(';')
 
-        if path.exists(sql_file):
-            # print(" {}".format(sql_file))
-            with open(sql_file, "r",encoding="utf-8") as sql:
-                code = sql.read()
-                print(code)
-                cursor.execute(code)
-        else:
-            print(" Unable to locate sql file:")
-            print(sql_file)
+        # Remove any empty statements
+        statements = [stmt.strip() for stmt in statements if stmt.strip()]
+
+        # Execute each SQL statement
+        for statement in statements:
+            sql_line = sql.SQL(statement)
+            try:
+                cursor.execute(sql_line)
+            except psycopg2.Error as e:
+                print("Exception:", str(e))
+                self.conn.rollback()  # Rollback the transaction
 
         cursor.close()
         self.conn.commit()
