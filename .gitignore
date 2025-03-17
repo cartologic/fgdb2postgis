@@ -4,3 +4,4 @@ build/
 fgdb2postgis.egg-info/
 *.pyc
 notes.txt
+*.gdb

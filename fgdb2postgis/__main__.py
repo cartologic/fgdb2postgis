@@ -20,12 +20,13 @@ def show_usage():
     print("  fgdb2postgis.py -h")
     print("  fgdb2postgis.py -f filegdb")
     print("                  -p postgis")
-    print("                  --a_srs=a_srs")
     print("                  --t_srs=t_srs")
     print("                  --host=host")
     print("                  --port=port")
     print("                  --user=user")
     print("                  --password=password")
+    print("")
+    print("Note: --a_srs is also accepted for backward compatibility but is ignored")
 
     sys.exit(1)
 
@@ -35,7 +36,7 @@ def show_version():
     sys.exit(1)
 
 
-if len(sys.argv) not in [2, 11]:
+if len(sys.argv) not in [2, 10, 11]:
     show_usage()
 else:
     try:
@@ -55,7 +56,8 @@ for opt, arg in options:
     elif opt in ('-p'):
         pgdb = arg
     elif opt in ('--a_srs'):
-        a_srs = arg
+        # Ignore a_srs, just accept it for backward compatibility
+        pass
     elif opt in ('--t_srs'):
         t_srs = arg
     elif opt in ('--host'):
@@ -71,27 +73,38 @@ for opt, arg in options:
 # Main - Instantiate the required database objects and perform the conversion
 #
 
-
 def main():
 
-    filegdb = FileGDB(fgdb, a_srs)
+    # Initialize FileGDB with just the workspace path
+    filegdb = FileGDB(fgdb, t_srs)
     filegdb.info()
     filegdb.open_files()
+
+    # Process schema elements
     filegdb.process_domains()
     filegdb.process_subtypes()
     filegdb.process_relations()
     filegdb.process_schemas()
+
+    # Initialize PostGIS
+    postgis = PostGIS(pgdb, host, port, user, password)
+    postgis.info()
+
+    # Load the database
+    postgis.load_database(filegdb)
+
+    # Process the database
+    postgis.process_database(filegdb)
+
+    # Close files
     filegdb.close_files()
 
-    postgis = PostGIS(host, port, user, password, pgdb, t_srs)
-    postgis.info()
-    postgis.connect()
-    postgis.update_views()
-    postgis.create_schemas(filegdb)
-    postgis.load_database(filegdb)
-    postgis.apply_sql(filegdb)
-    postgis.disconnect()
+    print("\nDone!")
 
-    filegdb.cleanup()
 
-    print("\nComplete!")
+# -------------------------------------------------------------------------------
+# Main - Instantiate the required database objects and perform the conversion
+#
+
+if __name__ == "__main__":
+    main()

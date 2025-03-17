@@ -7,13 +7,15 @@
 # Copyright: Cartologic 2017-2020
 #
 ##
-from os import getcwd, mkdir, path
-
-from ruamel.yaml import YAML
+import sys
+import os
+from os import path
+import yaml
+import arcpy
 from slugify import Slugify
 
-import arcpy
-import sys
+import ruamel.yaml
+from ruamel.yaml import YAML
 
 
 slugify = Slugify(translate=None)
@@ -29,9 +31,9 @@ yaml = YAMLObject()
 
 
 class FileGDB:
-    def __init__(self, workspace, a_srs):
+    def __init__(self, workspace, t_srs):
         self.workspace = workspace
-        self.a_srs = a_srs
+        self.t_srs = t_srs
         self.workspace_path = ""
         self.sqlfolder_path = ""
         self.yamlfile_path = ""
@@ -42,6 +44,8 @@ class FileGDB:
         self.indexes = []
         self.constraints = []
         self.views = []
+        self.domain_tables = []  # Track created domain tables
+        self.subtype_tables = []  # Track created subtype tables
         self.init_paths()
         self.setenv()
         self.parse_yaml()
@@ -51,7 +55,7 @@ class FileGDB:
     #
     def init_paths(self):
         # workspace path
-        workspace_path = path.join(getcwd(), self.workspace)
+        workspace_path = path.join(os.getcwd(), self.workspace)
         workspace_dir = path.dirname(workspace_path)
         workspace_base = path.basename(workspace_path)
 
@@ -68,7 +72,7 @@ class FileGDB:
 
     def info(self):
         print("\nFileGDB Info:")
-        print(" Workspace: {0} ({1})".format(self.workspace_path, self.a_srs))
+        print(" Workspace: {0} ({1})".format(self.workspace_path, self.t_srs))
         print(" Sqlfolder: {0}".format(self.sqlfolder_path))
         print(" Yamlfile: {0}".format(self.yamlfile_path))
 
@@ -81,27 +85,41 @@ class FileGDB:
     # Parse the yaml file and map data to schemas
     #
     def parse_yaml(self):
-        # parse yaml file and map datasets, feature classes, tables to schemas
         if not path.exists(self.yamlfile_path):
             print("\nCreating default YAML file ...")
             self.create_yaml()
+            print(f"Created default YAML file at {self.yamlfile_path}")
 
-        with open(self.yamlfile_path, 'r', encoding="utf-8") as ymlfile:
-            data_map = yaml.load(ymlfile)
-            for key_type, value_items in data_map.items():
-                if (key_type == "Schemas"):
-                    self.schemas = value_items
-                elif (key_type == "FeatureDatasets"):
-                    self.feature_datasets = value_items
-                elif (key_type == "FeatureClasses"):
-                    self.feature_classes = value_items
-                elif (key_type == "Tables"):
-                    self.tables = value_items
+        try:
+            with open(self.yamlfile_path, 'r', encoding="utf-8") as stream:
+                yaml_dict = {}
+                yaml_loader = YAML(typ='safe')
+                data_map = yaml_loader.load(stream)
+                
+                for key_type, value_items in data_map.items():
+                    if key_type == "Schemas":
+                        self.schemas = value_items
+                    elif key_type == "FeatureDatasets":
+                        self.feature_datasets = value_items
+                    elif key_type == "FeatureClasses":
+                        self.feature_classes = value_items
+                    elif key_type == "Tables":
+                        self.tables = value_items
 
-
-        # lookup_tables is a default schema and it will host subtypes, domains
-        if 'lookup_tables' not in self.schemas:
-            self.schemas.append('lookup_tables')
+                # lookup_tables is a default schema and it will host subtypes, domains
+                if 'lookup_tables' not in self.schemas:
+                    self.schemas.append('lookup_tables')
+                
+                if 'public' not in self.schemas:
+                    self.schemas.append('public')
+                
+        except Exception as e:
+            print(f"Error parsing YAML file: {str(e)}")
+            print("Using default schema settings")
+            self.schemas = ['public', 'lookup_tables']
+            self.feature_datasets = {}
+            self.feature_classes = {'public': []}
+            self.tables = {'public': []}
 
     # -------------------------------------------------------------------------------
     # Open sql files
@@ -110,7 +128,7 @@ class FileGDB:
         print("\nInitializing sql files ...")
 
         if not path.exists(self.sqlfolder_path):
-            mkdir(self.sqlfolder_path)
+            os.mkdir(self.sqlfolder_path)
 
         self.f_create_schemas = open(
             path.join(self.sqlfolder_path, "create_schemas.sql"), "w", encoding='utf-8')
@@ -189,50 +207,34 @@ class FileGDB:
         domain_field_desc = "Description"
 
         if not arcpy.Exists(domain_table):
-            arcpy.DomainToTable_management(
-                self.workspace, domain.name, domain_table, domain_field, domain_field_desc)
+            try:
+                arcpy.DomainToTable_management(
+                    self.workspace, domain.name, domain_table, domain_field, domain_field_desc)
+                print(f"  Created domain table: {domain_table}")
+                self.domain_tables.append(domain_table)
+            except Exception as e:
+                print(f"  Error creating domain table {domain_table}: {str(e)}")
+                return
 
         # create index
         self.create_index(domain_table, domain_field)
         self.split_schemas(domain_table, "lookup_tables")
 
     # -------------------------------------------------------------------------------
-    # Create foraign key constraints to tables referencing domain tables
+    # Create constraints referencing domains
     #
     def create_constraints_referencing_domains(self, layer):
-        dmcode = "Code"
-        dmcode_desc = "Description"
-        subtypes = {}
-
         try:
-            subtypes = arcpy.da.ListSubtypes(layer)
-        except:
-            print(layer, "List subtypes exception")
-
-        for stcode, v1 in subtypes.items():
-            for k2, v2 in v1.items():
-                if k2 == 'Default':
-                    stdefault = v2
-
-                elif k2 == 'Name':
-                    stname = v2
-
-                elif k2 == 'SubtypeField':
-                    if v2 != '':
-                        stfield = v2
-                        sttable = "{0}_{1}_lut".format(layer, stfield)
-                    else:
-                        stfield = '--'
-                        sttable = '--'
-
-                elif k2 == 'FieldValues':
-                    for dmfield, v3 in v2.items():
-                        if v3[1] is not None:
-                            dmname = slugify(
-                                v3[1].name, separator='_', lowercase=False)
-                            dmtable = dmname + '_lut'
-                            self.create_foreign_key_constraint(
-                                layer, dmfield, dmtable, dmcode)
+            fields = arcpy.ListFields(layer)
+            for field in fields:
+                if field.domain:
+                    domain_name = slugify(field.domain, separator='_', lowercase=False)
+                    domain_table = "{}_lut".format(domain_name)
+                    if arcpy.Exists(domain_table):
+                        self.create_foreign_key_constraint(
+                            layer, field.name, domain_table, "Code")
+        except Exception as e:
+            print(f"  Error creating constraints for {layer}: {str(e)}")
 
     # -------------------------------------------------------------------------------
     # Process subtypes
@@ -275,8 +277,9 @@ class FileGDB:
 
         try:
             subtypes_dict = arcpy.da.ListSubtypes(layer)
-        except:
-            print(layer, "An exception occurred")
+        except Exception as e:
+            print(f"{layer}: Error listing subtypes - {str(e)}")
+            return
 
         if subtypes_dict:                
             subtype_fields = {key: value['SubtypeField']
@@ -284,6 +287,9 @@ class FileGDB:
             subtype_values = {key: value['Name']
                             for key, value in subtypes_dict.items()}
 
+            if not subtype_fields:
+                return
+                
             key, field = list(subtype_fields.items())[0]                
 
             if len(field) > 0:
@@ -299,27 +305,37 @@ class FileGDB:
                     for f in arcpy.ListFields(layer):
                         if f.name.upper() == field:
                             field_type = f.type
+                            
+                if field_type is None:
+                    print(f"  Could not determine field type for subtype field {field} in {layer}")
+                    return
 
                 subtypes_table = "{0}_{1}_sub".format(layer, field)
                 subtypes_table = slugify(
                     subtypes_table, separator='_', lowercase=False)
 
                 if not arcpy.Exists(subtypes_table):
-                    # create subtypes table
-                    arcpy.CreateTable_management(self.workspace, subtypes_table)
-                    arcpy.AddField_management(subtypes_table, field, field_type)
-                    arcpy.AddField_management(
-                        subtypes_table, "Description", "String")
+                    try:
+                        # create subtypes table
+                        arcpy.CreateTable_management(self.workspace, subtypes_table)
+                        arcpy.AddField_management(subtypes_table, field, field_type)
+                        arcpy.AddField_management(
+                            subtypes_table, "Description", "String")
 
-                    # insert records (list of values)
-                    cur = arcpy.da.InsertCursor(subtypes_table, "*")
-                    oid = 1
-                    for code, desc in subtype_values.items():
-                        # print("  {0} {1}".format(code, desc))
-                        cur.insertRow([oid, code, desc])
-                        oid += 1
+                        # insert records (list of values)
+                        cur = arcpy.da.InsertCursor(subtypes_table, "*")
+                        oid = 1
+                        for code, desc in subtype_values.items():
+                            # print("  {0} {1}".format(code, desc))
+                            cur.insertRow([oid, code, desc])
+                            oid += 1
 
-                    del cur
+                        del cur
+                        print(f"  Created subtype table: {subtypes_table}")
+                        self.subtype_tables.append(subtypes_table)
+                    except Exception as e:
+                        print(f"  Error creating subtype table {subtypes_table}: {str(e)}")
+                        return
 
                 self.create_index(subtypes_table, field)
                 self.create_foreign_key_constraint(
@@ -330,59 +346,60 @@ class FileGDB:
     # Process relations
     # Create necessary indexes and foreign key constraints to support each relation
     #
-
     def process_relations(self):
         print("\nProcessing relations ...")
 
         relClassSet = self.get_relationship_classes()
 
         for relClass in relClassSet:
-            rel = arcpy.Describe(relClass)
-            if rel.isAttachmentRelationship:
-                continue
+            try:
+                rel = arcpy.Describe(relClass)
+                if rel.isAttachmentRelationship:
+                    continue
 
-            rel_origin_table = rel.originClassNames[0]
-            rel_destination_table = rel.destinationClassNames[0]
+                rel_origin_table = rel.originClassNames[0]
+                rel_destination_table = rel.destinationClassNames[0]
 
-            rel_primary_key = rel.originClassKeys[0][0]
-            rel_foreign_key = rel.originClassKeys[1][0]
+                rel_primary_key = rel.originClassKeys[0][0]
+                rel_foreign_key = rel.originClassKeys[1][0]
 
-            # convert primary/foreign key to uppercase if not found
-            if rel_primary_key not in [field.name for field in arcpy.ListFields(rel_origin_table)]:
-                rel_primary_key = rel.originClassKeys[0][0].upper()
+                # convert primary/foreign key to uppercase if not found
+                if rel_primary_key not in [field.name for field in arcpy.ListFields(rel_origin_table)]:
+                    rel_primary_key = rel.originClassKeys[0][0].upper()
 
-            if rel_foreign_key not in [field.name for field in arcpy.ListFields(rel_destination_table)]:
-                rel_foreign_key = rel.originClassKeys[1][0].upper()
+                if rel_foreign_key not in [field.name for field in arcpy.ListFields(rel_destination_table)]:
+                    rel_foreign_key = rel.originClassKeys[1][0].upper()
 
-            self.create_index(rel_origin_table, rel_primary_key)
-            self.create_foreign_key_constraint(
-                rel_destination_table, rel_foreign_key, rel_origin_table, rel_primary_key)
+                self.create_index(rel_origin_table, rel_primary_key)
+                self.create_foreign_key_constraint(
+                    rel_destination_table, rel_foreign_key, rel_origin_table, rel_primary_key)
 
-            # prcess data errors (fk)
-            str_data_errors_fk = '\\echo {0} ({1}) -> {2} ({3});'.format(
-                rel_destination_table, rel_foreign_key, rel_origin_table, rel_primary_key)
-            self.write_it(self.f_find_data_errors, str_data_errors_fk)
+                # process data errors (fk)
+                str_data_errors_fk = '\\echo {0} ({1}) -> {2} ({3});'.format(
+                    rel_destination_table, rel_foreign_key, rel_origin_table, rel_primary_key)
+                self.write_it(self.f_find_data_errors, str_data_errors_fk)
 
-            str_data_errors = 'SELECT COUNT(*) FROM "{0}" dest WHERE NOT EXISTS (SELECT 1 FROM "{1}" orig WHERE dest."{2}" = orig."{3}");'
-            str_data_errors = str_data_errors.format(
-                rel_destination_table, rel_origin_table, rel_foreign_key, rel_primary_key)
+                str_data_errors = 'SELECT COUNT(*) FROM "{0}" dest WHERE NOT EXISTS (SELECT 1 FROM "{1}" orig WHERE dest."{2}" = orig."{3}");'
+                str_data_errors = str_data_errors.format(
+                    rel_destination_table, rel_origin_table, rel_foreign_key, rel_primary_key)
 
-            self.write_it(self.f_find_data_errors, str_data_errors)
+                self.write_it(self.f_find_data_errors, str_data_errors)
 
-            str_fix_errors_1 = 'INSERT INTO "{0}" ("{1}")'.format(
-                rel_origin_table, rel_primary_key)
-            str_fix_errors_2 = 'SELECT DISTINCT detail."{0}" \n  FROM "{1}" AS detail \n LEFT JOIN "{2}" AS master ON detail."{3}" = master."{4}" \n WHERE master.id IS NULL;\n'
-            str_fix_errors_2 = str_fix_errors_2.format(
-                rel_foreign_key, rel_destination_table, rel_origin_table, rel_foreign_key, rel_primary_key)
+                str_fix_errors_1 = 'INSERT INTO "{0}" ("{1}")'.format(
+                    rel_origin_table, rel_primary_key)
+                str_fix_errors_2 = 'SELECT DISTINCT detail."{0}" \n  FROM "{1}" AS detail \n LEFT JOIN "{2}" AS master ON detail."{3}" = master."{4}" \n WHERE master.id IS NULL;\n'
+                str_fix_errors_2 = str_fix_errors_2.format(
+                    rel_foreign_key, rel_destination_table, rel_origin_table, rel_foreign_key, rel_primary_key)
 
-            self.write_it(self.f_fix_data_errors, str_fix_errors_1)
-            self.write_it(self.f_fix_data_errors, str_fix_errors_2)
+                self.write_it(self.f_fix_data_errors, str_fix_errors_1)
+                self.write_it(self.f_fix_data_errors, str_fix_errors_2)
+            except Exception as e:
+                print(f"  Error processing relationship {relClass}: {str(e)}")
 
     # -------------------------------------------------------------------------------
     # Create relationship classes Set and return it to the calling routine
     #
     def get_relationship_classes(self):
-
         # get featureclasses outside of datasets
         fc_list = arcpy.ListFeatureClasses("*")
 
@@ -401,8 +418,8 @@ class FileGDB:
             try:
                 for j, rel in enumerate(desc.relationshipClassNames):
                     relClasses.add(rel)
-            except:
-                print(fc, "An exception occurred")
+            except Exception as e:
+                print(f"  Error getting relationship classes for {fc}: {str(e)}")
 
         return relClasses
 
@@ -413,22 +430,16 @@ class FileGDB:
     def process_schemas(self):
         print("\nProcessing schemas ...")
 
-        # create extension postgis
-        str_create_extension = "CREATE EXTENSION IF NOT EXISTS postgis;\n"
-        self.write_it(self.f_create_schemas, str_create_extension)
-
         # create schemas
+        self.write_it(self.f_create_schemas, "-- Create schemas\n")
         for schema in self.schemas:
             if schema == 'public':
                 continue
+            str_schema = 'CREATE SCHEMA IF NOT EXISTS "{0}";\n'.format(schema)
+            self.write_it(self.f_create_schemas, str_schema)
 
-            str_drop_schema = 'DROP SCHEMA IF EXISTS \"{0}\" CASCADE;\n'.format(schema)
-            str_create_schema = 'CREATE SCHEMA \"{0}\";\n'.format(schema)
-            self.write_it(self.f_create_schemas, str_drop_schema)
-            self.write_it(self.f_create_schemas, str_create_schema)
-
-        # split feature classes within feature datasets to schemas
-        self.write_it(self.f_split_schemas, "\n")
+        # split feature datasets to schemas
+        self.write_it(self.f_split_schemas, "-- Split feature datasets to schemas\n")
         print(" FeatureDatasets")
         for schema, datasets in self.feature_datasets.items():
             if schema == 'public':
@@ -441,7 +452,7 @@ class FileGDB:
                     self.split_schemas(fc, schema)
 
         # split feature classes outside of feature datasets to schemas
-        self.write_it(self.f_split_schemas, "\n")
+        self.write_it(self.f_split_schemas, "\n-- Split standalone feature classes to schemas\n")
         print(" FeatureClasses")
         for schema, fcs in self.feature_classes.items():
             if schema == 'public':
@@ -452,7 +463,7 @@ class FileGDB:
                     self.split_schemas(fc, schema)
 
         # split tables to schemas
-        self.write_it(self.f_split_schemas, "\n")
+        self.write_it(self.f_split_schemas, "\n-- Split tables to schemas\n")
         print(" Tables")
         for schema, tables in self.tables.items():
             if schema == 'public':
@@ -461,131 +472,136 @@ class FileGDB:
             for table in tables:
                 if arcpy.Exists(table):
                     self.split_schemas(table, schema)
+                    
+        # Move lookup tables to lookup_tables schema
+        self.write_it(self.f_split_schemas, "\n-- Move lookup tables to lookup_tables schema\n")
+        str_lookup_tables = """
+DO $$
+DECLARE
+    t_name text;
+BEGIN
+    FOR t_name IN 
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_type = 'BASE TABLE'
+        AND (table_name LIKE '%\_lut%' OR table_name LIKE '%\_sub%')
+    LOOP
+        EXECUTE format('ALTER TABLE IF EXISTS public."%s" SET SCHEMA "lookup_tables";', t_name);
+    END LOOP;
+END $$;
+"""
+        self.write_it(self.f_split_schemas, str_lookup_tables)
 
     # -------------------------------------------------------------------------------
-    # Process Views
-    # Prepare Views with joins
-    # 
-    def _generate_view_for_layer(self, fc, schema="public"):
-        items = []
-        fields_to_be_replaced = []
-        items.append('CREATE TABLE final_data.{0} as (SELECT'.format(fc))
-        letter_assignment = bytes('aa', 'utf-8')
-        letter_assignment_d = None
-        letter_assignment_s = None
-        items.append('\n'.join(self._get_layer_fields(fc, letter_assignment)))
-        items.append('FROM "{}"."{}" {}'.format(schema, fc, letter_assignment.decode('utf-8')))
-
-        # Domains
-        subtypes = arcpy.da.ListSubtypes(fc)
-        created_table = []
-        for stcode, v1 in subtypes.items():
-            for k2, v2 in v1.items():
-                if k2 == 'FieldValues':
-                    for dmfield, v3 in v2.items():
-                        if v3[1] is not None:
-                            dmname = slugify(
-                            v3[1].name, separator='_', lowercase=False)
-                            dmtable = dmname + '_lut'
-                            if dmtable not in created_table:
-                                if letter_assignment[0] >= 122:
-                                    letter_assignment = bytes([letter_assignment[0], letter_assignment[1] + 1])
-                                else:
-                                    letter_assignment = bytes([letter_assignment[0] + 1, letter_assignment[1]])
-                                items.append('LEFT OUTER JOIN \n\tlookup_tables."{}" {} on aa."{}" = {}."Code"'.format(
-                                    dmtable, letter_assignment.decode('utf-8'), dmfield, letter_assignment.decode('utf-8')
-                                ))
-                                fields_to_be_replaced.append(
-                                    {'from': 'aa."{}"'.format(dmfield), 
-                                    'to': '{}."Description" as "{}"'.format(letter_assignment.decode('utf-8'), dmfield)})
-                                created_table.append(dmtable)
-        
-        # Subtypes
-        if subtypes: 
-            subtype_fields = {key: value['SubtypeField']
-                            for key, value in subtypes.items()}
-            subtype_values = {key: value['Name']
-                            for key, value in subtypes.items()}
-            key, field = list(subtype_fields.items())[0]
-            if len(field) > 0:
-                # find subtype field type
-                field_type = None
-                for f in arcpy.ListFields(fc):
-                    if f.name == field:
-                        field_type = f.type
-
-                # convert field to upper case and try again if not found
-                if field_type == None:
-                    field = field.upper()
-                    for f in arcpy.ListFields(fc):
-                        if f.name.upper() == field:
-                            field_type = f.type
-                subtypes_table = "{0}_{1}_lut".format(fc, field)
-                if letter_assignment[0] >= 122:
-                    letter_assignment = bytes([letter_assignment[0], letter_assignment[1] + 1])
-                else:
-                    letter_assignment = bytes([letter_assignment[0] + 1, letter_assignment[1]])
-                items.append('LEFT OUTER JOIN \n\tlookup_tables."{}" {} on aa."{}" = {}."{}"'.format(
-                    subtypes_table, letter_assignment.decode('utf-8'), field, letter_assignment.decode('utf-8'), field
-                ))
-                fields_to_be_replaced.append({'from': 'aa."{}"'.format(field), 'to': '{}."Description" as "{}"'.format(letter_assignment.decode('utf-8'), field)})
-        
-        result = '\n'.join(items)
-        for field in fields_to_be_replaced:
-            _field_from = '\t{},'.format(field['from'])
-            _field_to = '\t{},'.format(field['to'])
-
-            result = result.replace(_field_from, _field_to, 1)
-        
-        result = "{});\n\n".format(result)
-        result = "{0};\n".format(result, fc)
-        result = "{0}CREATE SEQUENCE final_data.{1}_ogc_fid_seq INCREMENT 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;\n".format(result, fc)
-        result = '{0}SELECT setval(''\'final_data.{1}_ogc_fid_seq''\', coalesce(max(id), 1)) from  final_data.{1};\n'.format(result, fc)
-        result = '{0}ALTER TABLE final_data.{1} RENAME id TO ogc_fid;\n'.format(result, fc)
-        result = '{0}ALTER TABLE final_data.{1} ALTER COLUMN ogc_fid SET DEFAULT nextval(''\'final_data.{1}_ogc_fid_seq''\'::regclass);\n'.format(result, fc)
-        result = '{0}ALTER TABLE final_data.{1} ADD PRIMARY KEY (ogc_fid);\n'.format(result, fc)
-        result = "{0}CREATE INDEX {1}_geom_geom_idx ON final_data.{1} USING gist (geom) TABLESPACE pg_default;\n".format(result, fc)
-
-        self.write_it(self.f_create_views, "{}\n\n".format(result))
-
-    def _get_layer_fields(self, layer, letter_assignment):
-        fields = []
-        subtypes = arcpy.da.ListSubtypes(layer)
-        for stcode, v1 in subtypes.items():
-            for k2, v2 in v1.items():
-                if k2 == 'FieldValues':
-                    for dmfield, v3 in v2.items():
-                        if dmfield == 'OBJECTID':
-                            fields.append('\t{}."{}",'.format(letter_assignment.decode('utf-8'), 'id'))
-                            fields.append('\t{}."{}",'.format(letter_assignment.decode('utf-8'), 'geom'))
-                        elif dmfield.lower() == 'shape':
-                            continue
-                        else:
-                            fields.append('\t{}."{}",'.format(letter_assignment.decode('utf-8'), dmfield))
-            break
-        fields[-1] = fields[-1].replace(',', '')
-        return fields
-        
-    def process_views(self):
-        # get featureclasses outside of datasets
-        self.write_it(self.f_create_views, "{}".format('CREATE SCHEMA IF NOT EXISTS final_data;\n\n'))
-
-        for layer in arcpy.ListFeatureClasses("*"):
-            self._generate_view_for_layer(layer, schema='public')
-
-        # get fetatureclasses within datasets
-        fds_list = arcpy.ListDatasets("*", "Feature")
-        for fds in fds_list:
-            for layer in arcpy.ListFeatureClasses("*", "", fds):
-                self._generate_view_for_layer(layer, schema=fds)
-
-    # -------------------------------------------------------------------------------
-    # Compose and write sql to alter the schema of a table
+    # Create YAML file with schema mappings
     #
-    def split_schemas(self, table, schema):
-        str_split_schemas = "ALTER TABLE \"{0}\" SET SCHEMA \"{1}\";\n".format(
-            table, schema)
-        self.write_it(self.f_split_schemas, str_split_schemas)
+    def create_yaml(self):
+        """Create YAML file with schema mappings"""
+        print("\nCreating default YAML file ...")
+        
+        # Initialize data structure
+        data_map = {}
+        data_map["Schemas"] = []
+        data_map["FeatureDatasets"] = {}
+        data_map["FeatureClasses"] = {}
+        data_map["Tables"] = {}
+        
+        # Add lookup_tables schema for domains and subtypes
+        data_map["Schemas"].append("lookup_tables")
+        
+        # Process feature datasets
+        fds_list = arcpy.ListDatasets("*", "Feature")
+        fds_list.sort()
+        
+        for fds in fds_list:
+            # Add feature dataset as schema
+            schema_name = slugify(fds, separator='_', lowercase=False)
+            if schema_name not in data_map["Schemas"]:
+                data_map["Schemas"].append(schema_name)
+            
+            # Add feature dataset to FeatureDatasets
+            data_map["FeatureDatasets"][schema_name] = [fds]
+            
+            # Add feature classes in this dataset to FeatureClasses
+            fc_list = arcpy.ListFeatureClasses("*", "", fds)
+            fc_list.sort()
+            
+            if schema_name not in data_map["FeatureClasses"]:
+                data_map["FeatureClasses"][schema_name] = []
+                
+            for fc in fc_list:
+                data_map["FeatureClasses"][schema_name].append(fc)
+        
+        # Process standalone feature classes
+        fc_list = arcpy.ListFeatureClasses("*", "")
+        fc_list.sort()
+        
+        if "public" not in data_map["Schemas"]:
+            data_map["Schemas"].append("public")
+            
+        if "public" not in data_map["FeatureClasses"]:
+            data_map["FeatureClasses"]["public"] = []
+            
+        for fc in fc_list:
+            data_map["FeatureClasses"]["public"].append(fc)
+        
+        # Process tables
+        tables_list = arcpy.ListTables()
+        tables_list.sort()
+        
+        if "public" not in data_map["Tables"]:
+            data_map["Tables"]["public"] = []
+            
+        # Check for lookup tables and add them to lookup_tables schema
+        if "lookup_tables" not in data_map["Tables"]:
+            data_map["Tables"]["lookup_tables"] = []
+            
+        for table in tables_list:
+            if "_lut" in table.lower() or "_sub" in table.lower():
+                # This is a lookup table, add to lookup_tables schema
+                data_map["Tables"]["lookup_tables"].append(table)
+            else:
+                # Regular table, add to public schema
+                data_map["Tables"]["public"].append(table)
+        
+        # Write to YAML file
+        try:
+            with open(self.yamlfile_path, 'w', encoding="utf-8") as stream:
+                yaml.dump(data_map, stream)
+                print(f"Created default YAML file at {self.yamlfile_path}")
+        except Exception as e:
+            print(f"Error creating YAML file: {str(e)}")
+
+    # -------------------------------------------------------------------------------
+    # Get feature datasets
+    #
+    def get_feature_datasets(self):
+        fdslist = arcpy.ListDatasets()
+        return fdslist
+
+    # -------------------------------------------------------------------------------
+    # Get feature classes
+    #
+    def get_feature_classes(self, fds):
+        fclist = arcpy.ListFeatureClasses("*", "", fds)
+        return fclist
+
+    # -------------------------------------------------------------------------------
+    # Get tables
+    #
+    def get_tables(self):
+        tableslist = arcpy.ListTables("*")
+        return tableslist
+
+    # -------------------------------------------------------------------------------
+    # Execute SQL file directly
+    #
+    def execute_sql_file(self, sql_file):
+        print(f"  Executing SQL file: {sql_file}")
+        with open(sql_file, 'r', encoding="utf-8") as f:
+            sql_content = f.read()
+            print(f"  SQL file content length: {len(sql_content)} characters")
 
     # -------------------------------------------------------------------------------
     # Create indexes
@@ -612,30 +628,12 @@ class FileGDB:
             self.write_it(self.f_create_constraints, str_constraint)
 
     # -------------------------------------------------------------------------------
-    # Create feature class view with relation
+    # Split schemas
     #
-    def create_view_feature_class(self, table_details, fkey, table_master, pkey):
-        view_name = "{0}_{1}_{2}_view".format(
-            table_details, fkey, table_master)
-
-        if view_name not in self.views:
-            self.views.append(view_name)
-            str_view = 'ALTER TABLE "{0}" ADD CONSTRAINT "{1}" FOREIGN KEY ("{2}") REFERENCES "{3}" ("{4}") NOT VALID; \n'
-            str_view = str_view.format(
-                table_details, view_name, fkey, table_master, pkey)
-            self.write_it(self.f_create_view, str_view)
-
-    # -------------------------------------------------------------------------------
-    # Write headers to sql files
-    #
-    def write_headers(self):
-        str_message = "SET client_min_messages TO error;\n"
-
-        self.write_it(self.f_create_schemas, str_message)
-        self.write_it(self.f_create_indexes, str_message)
-        self.write_it(self.f_create_constraints, str_message)
-        self.write_it(self.f_split_schemas, str_message)
-        self.write_it(self.f_fix_data_errors, str_message)
+    def split_schemas(self, table, schema):
+        str_split_schemas = "ALTER TABLE \"{0}\" SET SCHEMA \"{1}\";\n".format(
+            table, schema)
+        self.write_it(self.f_split_schemas, str_split_schemas)
 
     # -------------------------------------------------------------------------------
     # Write string to given open file
@@ -643,61 +641,18 @@ class FileGDB:
     def write_it(self, out_file, string):
         out_file.write(string)
 
-    def create_yaml(self):
-        # initialize dictionaries
-        schemasdict = {}
-        fdsdict = {'FeatureDatasets': {}}
-        fcdict = {'FeatureClasses': {}}
-        tablesdict = {'Tables': {}}
-
-        # feature datasets
-        fdslist = self.get_feature_datasets()
-        if fdslist != None:
-            fdslist.sort()
-            for fds in fdslist:
-                fdsdict['FeatureDatasets'].update({fds: [fds]})
-
-        # featureclasses in root
-        fclist = self.get_feature_classes(None)
-        if fclist != None:
-            fclist.sort()        
-        fcdict['FeatureClasses'].update({'public': fclist})
-
-        # tables
-        tableslist = self.get_tables()
-        if tableslist != None:
-            tableslist.sort()
-        tablesdict['Tables'].update({'public': tableslist})
-
-        # schemas
-        schemasdict.update({'Schemas': fdslist})
-
-        with open(self.yamlfile_path, 'w', encoding="utf-8") as outfile:
-            yaml.dump(schemasdict, outfile)
-
-        with open(self.yamlfile_path, 'a', encoding="utf-8") as outfile:
-            yaml.dump(fdsdict, outfile)
-
-        with open(self.yamlfile_path, 'a', encoding="utf-8") as outfile:
-            yaml.dump(fcdict, outfile)
-
-        with open(self.yamlfile_path, 'a', encoding="utf-8") as outfile:
-            yaml.dump(tablesdict, outfile)
-
-    def get_feature_datasets(self):
-        fdslist = arcpy.ListDatasets()
-        return fdslist
-
-    def get_feature_classes(self, fds):
-        fclist = arcpy.ListFeatureClasses("*", "", fds)
-        return fclist
-
-    def get_tables(self):
-        tableslist = arcpy.ListTables("*")
-        return tableslist
-
+    # -------------------------------------------------------------------------------
+    # Cleanup temporary files and tables
+    #
     def cleanup(self):
-        print("Cleanup temporary lookup tables...")
-        lutslist = arcpy.ListTables("*_lut")
-        for lut in lutslist:
-            arcpy.Delete_management(lut)
+        print("\nCleanup temporary lookup tables...")
+        try:
+            lutslist = arcpy.ListTables("*_lut")
+            for lut in lutslist:
+                if lut in self.domain_tables or lut in self.subtype_tables:
+                    print(f"  Keeping lookup table: {lut}")
+                    continue
+                print(f"  Deleting temporary table: {lut}")
+                arcpy.Delete_management(lut)
+        except Exception as e:
+            print(f"  Error during cleanup: {str(e)}")
